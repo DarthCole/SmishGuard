@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
 <!--
   ic_warning_dot.xml — Red Warning Dot Drawable
   ================================================
@@ -8,7 +9,6 @@
   "android:fillColor" sets the shape's fill color.
   The circle is drawn using an arc path in SVG path syntax.
 -->
-<?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"

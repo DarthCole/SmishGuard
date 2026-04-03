@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
 <!--
   item_conversation.xml — Single Conversation Row Layout
   ========================================================
@@ -8,7 +9,6 @@
   vertically CENTERED. It's GONE by default and made VISIBLE when the
   ML model flags the conversation as fraudulent.
 -->
-<?xml version="1.0" encoding="utf-8"?>
 <com.google.android.material.card.MaterialCardView
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"

@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
 <!--
   themes.xml — App Theme
   ========================
@@ -9,7 +10,6 @@
     - Light: Light background with dark text
     - NoActionBar: We provide our own Toolbar instead of the system one
 -->
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.SmishGuard" parent="Theme.MaterialComponents.Light.NoActionBar">
         <!-- Primary brand color (toolbar, buttons, etc.) -->

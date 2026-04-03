@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
 <!--
   colors.xml — App Color Palette
   ================================
@@ -9,7 +10,6 @@
     AA = alpha (transparency), FF = fully opaque, 00 = fully transparent
     RR = red, GG = green, BB = blue (hex values 00-FF)
 -->
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Primary brand colors -->
     <color name="primary">#1B5E20</color>           <!-- Dark green (security/trust) -->

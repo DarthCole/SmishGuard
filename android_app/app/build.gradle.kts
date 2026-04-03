@@ -94,6 +94,8 @@ dependencies {
     implementation("com.google.android.material:material:1.11.0")
     // ConstraintLayout: flexible layout manager for complex UIs
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
+    // SwipeRefreshLayout: pull-to-refresh gesture support
+    implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
 
     // ── Navigation ─────────────────────────────────────────────────
     // Jetpack Navigation: handles Fragment transitions and back stack

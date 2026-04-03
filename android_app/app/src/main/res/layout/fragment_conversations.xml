@@ -1,0 +1,49 @@
+<!--
+  fragment_conversations.xml — Conversations List Layout
+  ========================================================
+  Contains a SwipeRefreshLayout (pull-to-refresh) wrapping a RecyclerView
+  (scrolling list of conversations) and an empty state message.
+-->
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <!-- SwipeRefreshLayout wraps the RecyclerView to enable pull-to-refresh -->
+    <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+        android:id="@+id/swipe_refresh_layout"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/recycler_view_conversations"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
+            android:padding="8dp" />
+        <!--
+          "clipToPadding=false" means the padding area can show content
+          during scrolling (items slide under the padding area). Without
+          this, items would abruptly appear/disappear at the padding edge.
+        -->
+
+    </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+
+    <!-- Empty state message (shown when no conversations exist) -->
+    <TextView
+        android:id="@+id/text_empty_state"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="No SMS conversations found.\nGrant SMS permissions to get started."
+        android:textAlignment="center"
+        android:textSize="16sp"
+        android:textColor="@color/text_secondary"
+        android:visibility="gone"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>

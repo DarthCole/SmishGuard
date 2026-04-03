@@ -1,0 +1,21 @@
+<!--
+  strings.xml — App String Resources
+  =====================================
+  ALL user-visible text should be defined here, NOT hardcoded in layouts
+  or Kotlin code. This enables:
+    1. Easy translation to other languages
+    2. Centralized text management
+    3. Proper accessibility support (screen readers use these)
+-->
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SmishGuard</string>
+    <string name="protection_on">Protection is ON</string>
+    <string name="protection_off">Protection is OFF</string>
+    <string name="no_conversations">No SMS conversations found.\nGrant SMS permissions to get started.</string>
+    <string name="fraud_detected">Suspicious SMS Detected</string>
+    <string name="monitoring_active">Monitoring incoming SMS for fraud</string>
+    <string name="permission_rationale">SmishGuard needs SMS permissions to detect fraudulent messages and protect you from smishing attacks. All analysis is performed on your device — no data is sent to any server.</string>
+    <string name="clear_history">Clear Analysis History</string>
+    <string name="history_cleared">Analysis history cleared</string>
+</resources>

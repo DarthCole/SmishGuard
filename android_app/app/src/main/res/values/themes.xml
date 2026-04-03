@@ -1,0 +1,26 @@
+<!--
+  themes.xml — App Theme
+  ========================
+  Themes define the overall visual style of the app. They set default
+  colors, fonts, and widget styles that apply to every screen.
+  
+  "Theme.MaterialComponents.Light.NoActionBar" is our parent theme:
+    - MaterialComponents: Uses Material Design widgets
+    - Light: Light background with dark text
+    - NoActionBar: We provide our own Toolbar instead of the system one
+-->
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.SmishGuard" parent="Theme.MaterialComponents.Light.NoActionBar">
+        <!-- Primary brand color (toolbar, buttons, etc.) -->
+        <item name="colorPrimary">@color/primary</item>
+        <item name="colorPrimaryDark">@color/primary_dark</item>
+        <item name="colorAccent">@color/accent</item>
+
+        <!-- Status bar color (the bar at the very top with battery/clock) -->
+        <item name="android:statusBarColor">@color/primary_dark</item>
+
+        <!-- Background color for the entire app -->
+        <item name="android:windowBackground">@color/background</item>
+    </style>
+</resources>

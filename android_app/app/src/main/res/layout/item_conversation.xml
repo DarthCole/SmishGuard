@@ -1,0 +1,152 @@
+<!--
+  item_conversation.xml — Single Conversation Row Layout
+  ========================================================
+  This layout is used by ConversationAdapter to display EACH conversation
+  in the RecyclerView list.
+
+  ★ THE RED DOT: "indicator_fraud_dot" is positioned on the RIGHT side,
+  vertically CENTERED. It's GONE by default and made VISIBLE when the
+  ML model flags the conversation as fraudulent.
+-->
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginHorizontal="4dp"
+    android:layout_marginVertical="4dp"
+    app:cardCornerRadius="8dp"
+    app:cardElevation="1dp"
+    android:clickable="true"
+    android:focusable="true"
+    android:foreground="?attr/selectableItemBackground">
+    <!--
+      "selectableItemBackground" adds a ripple effect when tapped.
+      "clickable" + "focusable" are required for the ripple to work.
+    -->
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="12dp">
+
+        <!-- Sender initial circle (avatar placeholder) -->
+        <TextView
+            android:id="@+id/text_sender_initial"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="@drawable/ic_shield"
+            android:gravity="center"
+            android:textColor="@color/white"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            tools:text="J"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <!-- Sender name or phone number -->
+        <TextView
+            android:id="@+id/text_sender_name"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:textColor="@color/text_primary"
+            tools:text="John Doe"
+            app:layout_constraintStart_toEndOf="@id/text_sender_initial"
+            app:layout_constraintEnd_toStartOf="@id/text_timestamp"
+            app:layout_constraintTop_toTopOf="@id/text_sender_initial" />
+        <!--
+          "ellipsize=end" adds "..." when text is too long.
+          "maxLines=1" restricts to one line.
+          "tools:text" only shows in the layout preview, not in the real app.
+        -->
+
+        <!-- Message timestamp -->
+        <TextView
+            android:id="@+id/text_timestamp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="12sp"
+            android:textColor="@color/text_secondary"
+            tools:text="2h ago"
+            app:layout_constraintEnd_toStartOf="@id/indicator_fraud_dot"
+            app:layout_constraintTop_toTopOf="@id/text_sender_name"
+            android:layout_marginEnd="8dp" />
+
+        <!-- ═══════════════════════════════════════════════ -->
+        <!-- ★ RED FRAUD INDICATOR DOT ★                    -->
+        <!-- Right-aligned, vertically centered              -->
+        <!-- ═══════════════════════════════════════════════ -->
+        <ImageView
+            android:id="@+id/indicator_fraud_dot"
+            android:layout_width="16dp"
+            android:layout_height="16dp"
+            android:src="@drawable/ic_warning_dot"
+            android:contentDescription="Fraud warning indicator"
+            android:visibility="gone"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent" />
+        <!--
+          VISIBILITY states:
+            "gone" = invisible AND takes no space (default)
+            "visible" = shown on screen
+            "invisible" = hidden but still takes space
+
+          CONSTRAINTS: End→End of parent + Top/Bottom→parent
+          This positions the dot at the RIGHT edge, vertically CENTERED.
+        -->
+
+        <!-- Last message preview -->
+        <TextView
+            android:id="@+id/text_last_message"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:layout_marginTop="4dp"
+            android:ellipsize="end"
+            android:maxLines="2"
+            android:textSize="14sp"
+            android:textColor="@color/text_secondary"
+            tools:text="Hey, did you get my message about..."
+            app:layout_constraintStart_toEndOf="@id/text_sender_initial"
+            app:layout_constraintEnd_toStartOf="@id/indicator_fraud_dot"
+            app:layout_constraintTop_toBottomOf="@id/text_sender_name" />
+
+        <!-- Message count badge -->
+        <TextView
+            android:id="@+id/text_message_count"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:layout_marginTop="4dp"
+            android:textSize="11sp"
+            android:textColor="@color/text_secondary"
+            tools:text="24 msgs"
+            app:layout_constraintStart_toEndOf="@id/text_sender_initial"
+            app:layout_constraintTop_toBottomOf="@id/text_last_message" />
+
+        <!-- Fraud confidence text (only visible when flagged) -->
+        <TextView
+            android:id="@+id/text_fraud_confidence"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:textColor="@color/fraud_red"
+            android:visibility="gone"
+            tools:text="85% risk"
+            app:layout_constraintEnd_toStartOf="@id/indicator_fraud_dot"
+            app:layout_constraintTop_toBottomOf="@id/text_timestamp"
+            android:layout_marginEnd="8dp" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+</com.google.android.material.card.MaterialCardView>

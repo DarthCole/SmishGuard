@@ -1,0 +1,34 @@
+<!--
+  colors.xml — App Color Palette
+  ================================
+  All colors used across the app are defined here centrally.
+  Using named colors (instead of hardcoding hex values) makes it easy
+  to update the entire app's look by changing one file.
+  
+  Color format: #AARRGGBB or #RRGGBB
+    AA = alpha (transparency), FF = fully opaque, 00 = fully transparent
+    RR = red, GG = green, BB = blue (hex values 00-FF)
+-->
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Primary brand colors -->
+    <color name="primary">#1B5E20</color>           <!-- Dark green (security/trust) -->
+    <color name="primary_dark">#003300</color>       <!-- Darker green for status bar -->
+    <color name="primary_light">#4C8C4A</color>      <!-- Lighter green for accents -->
+    <color name="accent">#FF6F00</color>             <!-- Amber accent -->
+
+    <!-- Fraud indicator colors -->
+    <color name="fraud_red">#D32F2F</color>          <!-- Bold red for fraud warnings -->
+    <color name="fraud_background">#1AD32F2F</color> <!-- 10% opacity red tint -->
+    <!-- "1A" = 10% alpha (0x1A = 26 out of 255) -->
+    <color name="safe_background">#00000000</color>  <!-- Fully transparent -->
+
+    <!-- Text colors -->
+    <color name="text_primary">#212121</color>       <!-- Near-black for main text -->
+    <color name="text_secondary">#757575</color>     <!-- Gray for secondary text -->
+
+    <!-- Standard colors -->
+    <color name="white">#FFFFFF</color>
+    <color name="black">#000000</color>
+    <color name="background">#FAFAFA</color>         <!-- Light gray background -->
+</resources>

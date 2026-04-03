@@ -1,0 +1,118 @@
+<!--
+  AndroidManifest.xml
+  ====================
+  The "manifest" is the BLUEPRINT of your app. Android reads this file to know:
+    1. What PERMISSIONS the app needs
+    2. What COMPONENTS exist (Activities, Services, Receivers)
+    3. What Android FEATURES the app requires
+    4. What the app's entry point is (launcher Activity)
+
+  Think of it as a table of contents for your entire app.
+-->
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- ══════════════════════════════════════════════════════════
+         PERMISSIONS
+         ══════════════════════════════════════════════════════════
+         These declare what sensitive capabilities the app needs.
+         On Android 6.0+ (API 23+), "dangerous" permissions must ALSO
+         be requested at RUNTIME — the manifest alone isn't enough.
+    -->
+
+    <!-- READ_SMS: Allows reading the user's existing SMS messages from the Content Provider -->
+    <uses-permission android:name="android.permission.READ_SMS" />
+
+    <!-- RECEIVE_SMS: Allows the app to be notified when a NEW SMS arrives -->
+    <uses-permission android:name="android.permission.RECEIVE_SMS" />
+
+    <!-- FOREGROUND_SERVICE: Required since Android 9 (Pie) for long-running
+         background tasks. Shows a persistent notification so the user knows
+         the app is active. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+
+    <!-- POST_NOTIFICATIONS: Required on Android 13+ (API 33) to show notifications.
+         On your Android 9 device this isn't needed, but we include it for
+         forward compatibility. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- READ_CONTACTS: Optional — used to resolve phone numbers to contact names -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+
+    <!-- ══════════════════════════════════════════════════════════
+         APPLICATION
+         ══════════════════════════════════════════════════════════
+    -->
+    <application
+        android:name=".SmishGuardApplication"
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.SmishGuard"
+        android:networkSecurityConfig="@xml/network_security_config"
+        tools:targetApi="34">
+
+        <!--
+          allowBackup="false" — SECURITY: Prevents Android from backing up
+          app data to Google Drive (which could leak analysis results).
+          
+          networkSecurityConfig — SECURITY: Points to our custom network
+          policy that blocks all cleartext (HTTP) traffic.
+        -->
+
+        <!-- ── Main Activity (Entry Point) ── -->
+        <activity
+            android:name=".ui.main.MainActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.SmishGuard">
+            <!--
+              "exported=true" means other apps/system can launch this.
+              The intent-filter below makes it appear in the app launcher.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- ── Foreground Service (Background SMS Monitoring) ── -->
+        <service
+            android:name=".service.SmsMonitorService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync">
+            <!--
+              "exported=false" — SECURITY: Only our app can start this service.
+              "foregroundServiceType" — Required on Android 10+ to declare what
+              the foreground service does. We use "dataSync" since we're
+              processing SMS data.
+            -->
+        </service>
+
+        <!-- ── SMS Broadcast Receiver ── -->
+        <receiver
+            android:name=".service.SmsReceiver"
+            android:exported="true"
+            android:permission="android.permission.BROADCAST_SMS">
+            <!--
+              This receiver is triggered by the SYSTEM when a new SMS arrives.
+              "exported=true" is required so the system can send us the broadcast.
+              "permission" — SECURITY: Only processes that hold BROADCAST_SMS
+              permission (basically just the system) can trigger this receiver.
+            -->
+            <intent-filter android:priority="999">
+                <!--
+                  SMS_RECEIVED is the broadcast action sent when a new SMS arrives.
+                  High priority (999) means we get notified before lower-priority apps,
+                  but we do NOT consume the message — we only read and analyze it.
+                -->
+                <action android:name="android.provider.Telephony.SMS_RECEIVED" />
+            </intent-filter>
+        </receiver>
+
+    </application>
+
+</manifest>

@@ -1,0 +1,20 @@
+<!--
+  network_security_config.xml
+  ============================
+  SECURITY: This file controls the app's network security policy.
+  
+  "cleartextTrafficPermitted=false" means the app CANNOT use plain HTTP —
+  only encrypted HTTPS is allowed. This prevents man-in-the-middle attacks
+  and aligns with OWASP MASVS requirements.
+  
+  Since SmishGuard does ALL processing on-device and does NOT send data
+  to any server, this is an extra safety net.
+-->
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

@@ -1,0 +1,239 @@
+Chapter 3: Architecture and Design
+
+3.1 Introduction
+
+This chapter presents the system architecture and design of SmishGuard, detailing the structural decisions, component interactions, and design patterns that guide the application's construction. The architecture was designed to satisfy the functional and non-functional requirements defined in Chapter 2, with particular emphasis on three architectural priorities: (1) on-device processing for privacy preservation, (2) real-time background detection for continuous protection, and (3) modular separation of concerns to facilitate testing and future extensibility.
+
+SmishGuard is architected as a native Android application that operates entirely offline. The application employs a hybrid detection pipeline that combines a fine-tuned DistilBERT transformer model (deployed as a TensorFlow Lite artefact) with a rule-based heuristic engine and a contact-aware scoring mechanism. The following sections present the high-level system overview, the chosen architectural pattern, detailed module and component designs, data flow schematics, and a justification of key design decisions.
+
+
+3.2 System Overview
+
+SmishGuard operates within the Android operating system environment, leveraging platform-provided mechanisms for SMS interception, notification delivery, and persistent background execution. At a high level, the system consists of the following major subsystems:
+
+1. SMS Interception Layer: Responsible for detecting incoming SMS messages via the Android broadcast system and forwarding their content to the analysis pipeline.
+
+2. Classification Engine: The core analytical component that processes SMS text through a multi-stage hybrid pipeline — beginning with a transformer-based model, followed by contextual score adjustments, and culminating in rule-based subcategorisation.
+
+3. Data Persistence Layer: A local SQLite database (accessed via Android's Room abstraction) that stores classification results for display and historical reference.
+
+4. Presentation Layer: The user interface that displays SMS conversations with threat indicators, provides explanation dialogs, and offers settings and control options.
+
+5. Service Management Layer: Manages the lifecycle of the foreground service that enables continuous background monitoring.
+
+[Figure 3.1: High-level system overview diagram — TO BE INSERTED]
+
+No component in this architecture communicates with external servers. All data flows are local to the device. This architectural decision, motivated by the privacy requirements documented in Chapter 2 (NFR-04 through NFR-08), ensures that user SMS data never leaves the device boundary.
+
+
+3.3 Architectural Pattern: MVVM with Clean Architecture
+
+SmishGuard adopts the Model-View-ViewModel (MVVM) architectural pattern, augmented with principles from Clean Architecture (Martin, 2017) to establish clear boundaries between layers. This pattern was chosen for several reasons.
+
+First, MVVM is the recommended architectural pattern for Android application development, endorsed by Google's official Android Architecture Guidelines (Android Developers, 2024b). It provides a well-defined separation of responsibilities: the View layer handles UI rendering and user input; the ViewModel layer manages UI-related state and business logic coordination; and the Model layer encapsulates data access and domain logic.
+
+Second, Clean Architecture's principle of dependency inversion — where inner layers (domain logic) are independent of outer layers (frameworks, UI, databases) — ensures that the classification engine can be developed, tested, and iterated independently of the Android framework. This was particularly important during the model development phase, where the detection algorithm was refined through multiple iterations without impacting the UI or service layers.
+
+The layered structure is organised as follows:
+
+3.3.1 Domain Layer
+
+The domain layer defines the core data models and enumerations that represent the application's business concepts. These include:
+
+- ThreatCategory: An enumeration with three values — SAFE, SPAM, and FRAUD — representing the classification outcome for each analysed message.
+
+- SmsConversation: A data class encapsulating the information associated with a single SMS conversation thread, including the thread identifier, sender address, sender name (if resolved from contacts), last message preview, timestamp, message count, and (for flagged conversations) the threat category, confidence score, and human-readable threat reason.
+
+- AnalysisResult: The domain representation of a classification outcome, including the message identifier, thread identifier, threat category, confidence score, timestamp of analysis, and the matched detection rule (if applicable).
+
+These domain models carry no dependencies on Android framework classes, Room annotations, or TensorFlow Lite APIs, ensuring that the domain layer remains portable and testable.
+
+3.3.2 Data Layer
+
+The data layer is responsible for data access and persistence. It consists of:
+
+- SmsRepository: The central data access class that coordinates between multiple data sources. It reads SMS messages from the device's content provider (content://sms), queries the Room database for stored analysis results, resolves contact names from the device's contacts provider, and constructs enriched SmsConversation objects for the presentation layer.
+
+- SmishGuardDatabase: A Room database singleton (version 5) that provides the AnalysisResultDao for CRUD operations on analysis results. The database uses a destructive migration strategy during the development phase.
+
+- AnalysisResultEntity: The Room entity class annotated with database schema information, mapped to and from the domain AnalysisResult model.
+
+- AnalysisResultDao: The Room Data Access Object interface defining queries for inserting, retrieving, and deleting analysis results.
+
+3.3.3 Presentation Layer
+
+The presentation layer follows the MVVM pattern:
+
+- MainViewModel: Extends Android's ViewModel class and exposes observable LiveData streams for the conversation list and UI state. It coordinates background scanning operations, manages the foreground service lifecycle, and persists user preferences (such as the protection toggle state) using EncryptedSharedPreferences.
+
+- ConversationsFragment: The primary UI fragment that observes the ViewModel's conversation list LiveData and renders the conversation list using a RecyclerView with a custom ConversationAdapter. It also handles user interactions such as tap-to-explain and pull-to-refresh.
+
+- ConversationAdapter: A RecyclerView adapter that binds SmsConversation data to list item views, applying visual threat indicators (coloured dots, background shading, and confidence labels) based on the threat category.
+
+- SettingsFragment: A secondary fragment providing privacy information display and data management options (clearing analysis history).
+
+3.3.4 Service Layer
+
+The service layer manages background processing:
+
+- SmsReceiver: A BroadcastReceiver registered in the Android manifest to receive SMS_RECEIVED broadcasts. It extracts the sender address and message body from the broadcast intent and forwards them to the SmsMonitorService.
+
+- SmsMonitorService: A Foreground Service that runs persistently in the background, maintaining a visible notification to comply with Android's background execution requirements (Android Developers, 2024a). It receives SMS data from the BroadcastReceiver, invokes the SmishDetector for classification, stores results in the database via the DAO, and generates alert notifications for detected threats.
+
+- SmishDetector: The classification engine implemented as a thread-safe singleton. It manages the lifecycle of the TFLite interpreter, the WordPiece tokeniser vocabulary, and the rule-based heuristic patterns. Detailed design of this component is presented in Section 3.4.
+
+[Figure 3.2: MVVM architecture diagram with layer boundaries — TO BE INSERTED]
+
+
+3.4 Classification Engine Design
+
+The SmishDetector is the architectural centrepiece of SmishGuard. It implements a multi-stage hybrid detection pipeline that balances the statistical generalisation capabilities of a transformer-based model with the precision of handcrafted rules and the contextual relevance of contact-aware scoring.
+
+3.4.1 Pipeline Overview
+
+The classification pipeline processes each SMS message through four sequential stages:
+
+Stage 1 — Model Inference: The message text is tokenised using the WordPiece algorithm with a vocabulary of 30,522 tokens (matching the DistilBERT tokeniser). The tokenised input is padded or truncated to a fixed sequence length and passed to the TFLite interpreter, which returns a raw threat probability score between 0.0 and 1.0.
+
+Stage 2 — Contextual Score Adjustment: The raw model score is adjusted based on contextual signals:
+- If the sender is found in the user's device contacts, the score is reduced by 40%, reflecting the lower prior probability of fraud from known contacts.
+- If the sender's address matches an entry in the safe senders whitelist (a curated list of known legitimate service numbers), the score is reduced by 30%.
+These adjustments are multiplicative reductions applied to the raw score, ensuring that the adjustments are proportional to the model's initial assessment rather than absolute offsets.
+
+Stage 3 — Threshold Evaluation: The adjusted score is compared against a configurable threat threshold (currently set to 0.4). Messages scoring below the threshold are classified as SAFE, and the pipeline terminates. Messages scoring at or above the threshold proceed to Stage 4.
+
+Stage 4 — Rule-Based Subcategorisation: For messages exceeding the threat threshold, a set of regex-based rules is applied to determine whether the message is SPAM or FRAUD. The rules are organised into two categories:
+- Fraud Rules (10 patterns): Detect messages that impersonate legitimate entities, demand personal information, threaten account suspension, request PIN or OTP codes, or use urgency-based social engineering tactics.
+- Spam Rules (6 patterns): Detect unsolicited promotional messages, lottery/prize scams, and commercial messaging patterns.
+If at least one fraud rule matches, the message is classified as FRAUD with the first matching rule recorded. If no fraud rules match but at least one spam rule matches, the message is classified as SPAM. If no rules match (the model flagged the message but no specific rule pattern was detected), the message is classified as SPAM by default with a generic "model_detected" reason, reflecting the model's statistical assessment without a specific rule attribution.
+
+[Figure 3.3: Hybrid detection pipeline flowchart — TO BE INSERTED]
+
+3.4.2 Singleton Pattern and Lazy Loading
+
+The SmishDetector is implemented as a singleton to ensure that only one instance of the TFLite interpreter and tokeniser vocabulary exists in memory at any time. This design addresses the memory constraints documented in NFR-01 and the OOM (Out of Memory) risk identified during early testing.
+
+The singleton employs lazy initialisation: the TFLite model (127 MB) and vocabulary file are loaded into memory only when the first classification request is received, rather than at application startup. This approach minimises the application's memory footprint during periods when no SMS analysis is required and reduces the startup time perceived by the user.
+
+3.4.3 Heuristic Fallback
+
+To satisfy the reliability requirement (NFR-13), the classification engine includes a fallback mechanism. If the TFLite model fails to load — due to insufficient memory, a corrupted model file, or any other runtime exception — the engine degrades gracefully to heuristic-only classification. In this fallback mode, all incoming messages are evaluated solely against the regex rule patterns. While this mode lacks the statistical generalisation of the transformer model, it ensures that users retain a baseline level of protection even under adverse conditions.
+
+
+3.5 Database Design
+
+SmishGuard uses a single-table database schema optimised for the application's specific data access patterns.
+
+3.5.1 Schema
+
+The analysis_results table stores one record per analysed SMS message with the following columns:
+
+| Column           | Type    | Description                                                  |
+|------------------|---------|--------------------------------------------------------------|
+| message_id       | TEXT PK | Unique identifier for the SMS message (from content provider)|
+| thread_id        | TEXT    | The conversation thread to which this message belongs         |
+| threat_category  | TEXT    | Classification result: SAFE, SPAM, or FRAUD                  |
+| confidence_score | REAL    | The adjusted confidence score (0.0 to 1.0)                   |
+| analyzed_at      | INTEGER | Unix timestamp of the analysis                               |
+| matched_rule     | TEXT    | Name of the matched detection rule, or null for SAFE         |
+
+The message_id serves as the primary key, ensuring that each message is analysed at most once. When the SmsRepository builds conversation objects, it joins SMS content provider data with analysis_results records to enrich each conversation with threat information.
+
+[Figure 3.4: Database entity-relationship diagram — TO BE INSERTED]
+
+
+3.6 Background Service Architecture
+
+Continuous background monitoring is fundamental to SmishGuard's value proposition. The application must detect incoming SMS messages even when the user is not actively using the application or the device screen is off. This section details the architectural approach to background execution.
+
+3.6.1 Android Background Execution Constraints
+
+Android 8.0 (Oreo, API 26) and above impose significant restrictions on background execution to preserve battery life and system resources (Android Developers, 2024a). Applications can no longer start background services freely; instead, they must use foreground services that display a persistent notification to the user, or use the JobScheduler/WorkManager APIs for deferred work.
+
+SmishGuard uses the Foreground Service approach because the application requires immediate, real-time processing of incoming SMS messages. Deferred execution models (WorkManager) would introduce unacceptable latency between message receipt and classification, potentially allowing the user to interact with a fraudulent message before classification completes.
+
+3.6.2 Service Lifecycle
+
+The SmsMonitorService lifecycle is managed as follows:
+
+1. Service Start: When the user enables the protection toggle, the MainViewModel calls startForegroundService() to launch the SmsMonitorService. The service immediately calls startForeground() with a persistent notification on the "SmishGuard Protection" notification channel.
+
+2. Continuous Operation: The service runs indefinitely until explicitly stopped. It does not perform periodic work; instead, it serves as the entry point for SMS data forwarded by the SmsReceiver.
+
+3. Message Processing: When the SmsReceiver detects an incoming SMS, it constructs an intent containing the sender address and message body and starts the service with this intent. The service extracts the data, invokes SmishDetector on a coroutine background thread, stores the result in the database, and (if the message is classified as a threat) posts an alert notification on the "SmishGuard Alerts" notification channel.
+
+4. Service Restart: The service returns START_STICKY from its onStartCommand() method, instructing the Android system to restart the service if it is killed due to resource pressure.
+
+5. Service Stop: When the user disables the protection toggle, the MainViewModel calls stopService() to terminate the foreground service and remove the persistent notification.
+
+[Figure 3.5: Service lifecycle state diagram — TO BE INSERTED]
+
+
+3.7 Privacy Architecture
+
+SmishGuard's privacy architecture implements a defence-in-depth approach, embedding multiple layers of protection to ensure that user SMS data is handled with the highest standard of care.
+
+3.7.1 On-Device Processing
+
+The most fundamental privacy guarantee is architectural: no component of the system transmits data to external servers. The TFLite model, vocabulary, and rule patterns are bundled with the application at build time. Classification is performed entirely on-device. This design eliminates an entire class of privacy risks — including data interception during transmission, server-side data breaches, and unauthorised third-party data sharing.
+
+3.7.2 Encrypted Storage
+
+User preferences, including the protection toggle state, are stored using Android's EncryptedSharedPreferences, which encrypts both the keys and values using AES-256 encryption (Android Developers, 2024c). The encryption keys are managed by Android's Keystore system, ensuring that they are hardware-backed on devices that support it.
+
+Database records are protected by the application's sandboxed storage, which is accessible only to the SmishGuard application process. The AndroidManifest declares android:allowBackup="false" to prevent analysis results from being included in device backups, which could otherwise expose classification data if the backup is stored insecurely.
+
+3.7.3 Network Restrictions
+
+A custom network security configuration (network_security_config.xml) blocks all cleartext (unencrypted) HTTP traffic from the application. While SmishGuard does not initiate network connections, this configuration provides an additional safety net against accidental data leakage, particularly in the event of future code changes or library dependencies that might attempt network communication.
+
+3.7.4 Minimal Data Retention
+
+SmishGuard stores only classification metadata (threat category, confidence score, matched rule, timestamp) — not the SMS message content itself. Message text is read from the system SMS content provider at display time and is never duplicated into SmishGuard's own storage. Users can clear all stored analysis results at any time through the settings screen, providing complete user control over retained data.
+
+
+3.8 Mapping to Requirements
+
+The following table summarises how the architectural components address the requirements defined in Chapter 2.
+
+| Requirement | Architectural Component                         |
+|-------------|--------------------------------------------------|
+| FR-01, FR-02| AndroidManifest permission declarations           |
+| FR-03       | SmsMonitorService (Foreground Service)            |
+| FR-04       | SmsReceiver + SmsMonitorService intent forwarding |
+| FR-05       | SmishDetector hybrid pipeline                     |
+| FR-06       | SmsMonitorService notification posting            |
+| FR-07       | ConversationsFragment explanation dialog mapping   |
+| FR-08       | ConversationAdapter visual indicators             |
+| FR-09       | ConversationsFragment AlertDialog                 |
+| FR-10       | SmsRepository contact name resolution             |
+| FR-11       | ConversationsFragment pull-to-refresh             |
+| FR-12       | MainViewModel protection toggle                   |
+| FR-13       | SettingsFragment privacy display                  |
+| FR-14       | SettingsFragment clear history                    |
+| NFR-01, NFR-02 | Singleton SmishDetector with lazy loading       |
+| NFR-04–NFR-08  | Privacy architecture (Section 3.7)              |
+| NFR-09      | minSdk=27 in build configuration                  |
+| NFR-10      | Bundled model, no network dependency              |
+| NFR-12      | START_STICKY service restart policy               |
+| NFR-13      | SmishDetector heuristic fallback                  |
+
+
+3.9 Justification of Design Decisions
+
+This section briefly justifies the most significant design choices.
+
+DistilBERT over Lightweight Models: While simpler models (Naive Bayes, SVM, logistic regression) offer faster inference times and smaller footprints, they lack the contextual understanding required to detect subtle social engineering patterns in SMS text. DistilBERT retains 97% of BERT's language understanding capabilities while being 60% smaller and 60% faster (Sanh et al., 2019), making it a suitable compromise between accuracy and on-device resource consumption.
+
+Hybrid Over Pure ML: A purely model-based approach would provide strong generalisation but would lack the specificity needed for granular subcategorisation (Spam vs. Fraud). Conversely, a purely rule-based approach would offer specificity but would fail to generalise to novel phishing patterns. The hybrid design leverages both strengths: the model provides a generalised threat assessment, and the rules refine the classification with domain-specific precision.
+
+Foreground Service Over WorkManager: WorkManager is Android's recommended solution for deferrable background work, but SMS fraud detection is not deferrable. A fraudulent message that is classified 15 minutes after arrival (the minimum WorkManager interval) is a message that the user may already have acted upon. The foreground service approach ensures near-instantaneous processing at the cost of a persistent notification.
+
+Room Over Raw SQLite: Room provides compile-time query validation, type-safe data access objects, and seamless integration with Kotlin coroutines and LiveData. These features reduce the risk of SQL injection vulnerabilities, simplify asynchronous database operations, and align with modern Android development best practices.
+
+Singleton SmishDetector: Loading the 127 MB TFLite model is expensive in both time and memory. The singleton pattern ensures that this cost is incurred at most once per application lifecycle, avoiding the OOM crashes observed during early testing when multiple SmishDetector instances were inadvertently created.
+
+
+3.10 Conclusion
+
+This chapter has presented SmishGuard's architecture as a layered, privacy-preserving system built on the MVVM pattern with Clean Architecture principles. The hybrid detection pipeline — combining DistilBERT inference, contextual score adjustment, and rule-based subcategorisation — addresses the accuracy, granularity, and explainability requirements identified in Chapter 2. The foreground service architecture ensures real-time detection, while the comprehensive privacy measures (on-device processing, encrypted storage, network restrictions, and minimal data retention) protect user data throughout the application lifecycle. The subsequent chapter will detail the implementation of each component, including model training, code-level design decisions, and the integration of the detection pipeline within the Android application framework.

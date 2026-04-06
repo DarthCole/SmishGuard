@@ -1,0 +1,160 @@
+Chapter 1: Introduction
+
+1.1 Background
+
+The proliferation of mobile money services across sub-Saharan Africa has fundamentally transformed financial inclusion, enabling millions of previously unbanked individuals to participate in formal financial systems through their mobile devices (Aker & Mbiti, 2010). Ghana has emerged as one of the continent's most vibrant mobile money markets, with providers such as MTN Mobile Money, Telecel Cash (formerly Vodafone Cash), and AirtelTigo Money (ATMoney) collectively serving over 20 million active accounts by the close of 2023 (Bank of Ghana, 2024). As of the fourth quarter of that year, the total value of mobile money transactions in Ghana exceeded GHS 1.2 trillion, representing a year-on-year growth rate of approximately 34% (Ghana Interbank Payment and Settlement Systems [GhIPSS], 2024). This exponential growth underscores the critical role mobile money now plays in everyday commercial activity, from person-to-person transfers and utility payments to merchant transactions and salary disbursements.
+
+However, this rapid digital financial adoption has been accompanied by a proportional surge in SMS-based fraud, commonly referred to as "smishing" — a portmanteau of SMS and phishing (Mishra & Soni, 2022). Smishing attacks exploit the trust users place in text messages by impersonating legitimate entities such as banks, mobile network operators, and government agencies (Sonowal & Kuppusamy, 2020). In the Ghanaian context, smishing messages frequently masquerade as notifications from mobile money providers, urging recipients to verify personal details, claim fictitious prizes, or follow malicious links that lead to credential harvesting pages (Turkson et al., 2024).
+
+The Cyber Security Authority (CSA) of Ghana reported that mobile money fraud constituted the single largest category of cybercrime complaints received between 2021 and 2023, accounting for approximately 43% of all cases reported to the authority (CSA, 2023). This figure is likely an underestimate, as research has shown that a significant proportion of fraud victims in developing economies do not report incidents due to embarrassment, perceived futility, or lack of awareness about reporting channels (Boateng et al., 2016). Turkson et al. (2024) documented that demographic factors including age, educational attainment, and familiarity with digital technologies significantly influence susceptibility to mobile money fraud in Ghana, suggesting that a one-size-fits-all awareness campaign is insufficient.
+
+A critical observation is that SMS remains the primary communication channel between Ghanaian telecommunications companies and their customers. Unlike markets such as the United States or the European Union, where email and in-app notifications dominate, Ghanaian mobile money providers rely heavily on SMS for transaction confirmations, promotional offers, and service alerts (Appiah & Osei, 2020). This dependency creates a uniquely fertile ground for smishing, as users have been conditioned to expect and act upon SMS from their telcos. Attackers exploit this behaviour by crafting messages that closely mimic the lexical patterns, sender names, and formatting conventions of legitimate operator communications.
+
+Despite the severity of the problem, existing anti-smishing solutions remain inadequate for the Ghanaian market. Global products such as Google Messages' built-in spam filter and Truecaller's crowd-sourced identification database are designed primarily for English-language markets and do not account for the code-mixed linguistic patterns (English, Twi, Pidgin) and Ghana-specific scam templates prevalent in local smishing campaigns (Acheampong & Korsah, 2021). Moreover, these solutions typically rely on cloud-based processing, which raises data privacy concerns and introduces dependencies on stable internet connectivity — a resource that remains intermittent in many Ghanaian communities (International Telecommunication Union [ITU], 2023).
+
+These limitations motivate the development of SmishGuard, a native Android application that leverages on-device natural language processing (NLP) to detect and classify SMS-based fraud in real time. By fine-tuning a DistilBERT transformer model (Sanh et al., 2019) on a Ghana-specific SMS dataset and deploying it as a TensorFlow Lite model directly on the user's device, SmishGuard achieves three objectives simultaneously: it delivers context-aware classification tuned to local smishing patterns, it preserves user privacy by processing all SMS data on-device without server transmission, and it operates without internet connectivity — a critical requirement for a market where data costs remain a barrier to continuous connectivity.
+
+
+1.2 Problem Statement
+
+Despite the widespread adoption of mobile money services in Ghana, users remain critically vulnerable to SMS-based fraud due to the absence of effective, locally contextualised detection mechanisms. The existing landscape presents three compounding deficiencies.
+
+First, there is a detection gap. Current SMS fraud detection tools, including carrier-level spam filters and third-party applications such as Truecaller, rely predominantly on crowd-sourced blocklists and keyword matching heuristics. These approaches are reactive rather than predictive: they require a scam campaign to be reported by multiple users before it is flagged, by which point significant financial harm may have already occurred (Jain & Gupta, 2022). Furthermore, these tools are not trained on Ghanaian SMS patterns and therefore exhibit poor precision when applied to local content, frequently misclassifying legitimate operator messages as spam or, conversely, allowing locally crafted smishing messages to pass undetected.
+
+Second, there is a privacy gap. Cloud-dependent detection architectures require transmitting SMS content to external servers for analysis. For users in Ghana, where mobile money accounts are directly tied to personal identification and financial assets, this represents an unacceptable privacy risk (Osei-Owusu, 2015). Users who are already wary of digital fraud are unlikely to trust a solution that requires surrendering their message data to a remote service. Any viable solution must therefore perform classification entirely on-device.
+
+Third, there is an accessibility gap. Solutions that depend on continuous internet connectivity exclude a substantial portion of the Ghanaian population. According to the ITU (2023), effective mobile broadband penetration in Ghana stands at approximately 53%, and connectivity quality varies significantly between urban and rural areas. An SMS fraud detection system that requires internet access to function is inherently exclusionary, failing to protect precisely those users who may be most vulnerable.
+
+This study addresses these gaps by investigating the following research question: Can an on-device, NLP-based mobile application effectively detect and classify SMS-based fraud within the Ghanaian telecommunications context while preserving user privacy and operating independently of internet connectivity?
+
+
+1.3 Research Aims
+
+The primary aim of this study is to design, implement, and evaluate a native Android application that employs a fine-tuned transformer-based NLP model to detect SMS-based fraud targeting mobile money users in Ghana. The specific objectives are as follows:
+
+1. To determine the efficacy of a fine-tuned DistilBERT model in distinguishing between legitimate SMS communications and smishing attempts within the Ghanaian context, benchmarked against traditional machine learning classifiers.
+
+2. To design and implement an on-device deployment strategy using TensorFlow Lite that enables real-time classification within the constraints of entry-level to mid-range Android smartphones prevalent in the Ghanaian market.
+
+3. To evaluate the usability and perceived effectiveness of the resulting mobile application through structured user testing with mobile money users in Ghana.
+
+
+1.4 Research Questions
+
+This study is guided by the following research questions:
+
+RQ1: How effectively does a fine-tuned DistilBERT model classify SMS messages as safe, spam, or fraudulent when evaluated on a Ghana-specific SMS dataset?
+
+RQ2: What architectural strategies are required to deploy a transformer-based NLP model on-device within a native Android application while maintaining acceptable inference latency and memory consumption?
+
+RQ3: How do mobile money users in Ghana perceive the usability, accuracy, and trustworthiness of an on-device SMS fraud detection application?
+
+
+1.5 Significance of the Study
+
+This study contributes to both academic knowledge and practical application in several dimensions.
+
+From a theoretical perspective, this work extends the body of research on smishing detection by specifically addressing the underexplored Ghanaian telecommunications context. While existing literature has investigated SMS phishing detection using datasets drawn from primarily Western markets (Mishra & Soni, 2022; Sonowal & Kuppusamy, 2020), this study introduces a classification pipeline trained on locally sourced SMS data that captures the linguistic patterns, sender conventions, and scam templates unique to Ghanaian mobile money fraud. This contextualisation is significant because natural language processing models are known to exhibit degraded performance when applied to linguistic domains that differ substantially from their training data (Devlin et al., 2019).
+
+From a practical standpoint, the application developed in this study — SmishGuard — represents a directly deployable tool that mobile money users in Ghana can install on their personal devices to receive real-time fraud warnings. Unlike cloud-based solutions, SmishGuard's on-device architecture ensures that no SMS content leaves the user's device, addressing the privacy concerns that have hindered adoption of existing tools. The application's ability to function without internet connectivity further ensures accessibility across diverse connectivity environments within Ghana.
+
+The study also contributes to the emerging field of on-device machine learning for mobile applications. The deployment of a DistilBERT model — a transformer architecture with 66 million parameters — onto resource-constrained Android devices via TensorFlow Lite demonstrates the feasibility of bringing sophisticated NLP capabilities to edge devices. This has implications beyond fraud detection, suggesting pathways for deploying similar models in healthcare, education, and agricultural advisory applications in resource-limited settings.
+
+Finally, the human-centred evaluation component of this study generates empirical evidence about how Ghanaian mobile money users interact with AI-driven security tools. These insights inform the design of future protective technologies for emerging markets, where user trust, digital literacy levels, and cultural factors may significantly influence adoption patterns.
+
+
+1.6 Related Works
+
+This section examines existing solutions and academic research relevant to SMS fraud detection, on-device machine learning, and mobile application security. The review is organised into three subsections: industry products that currently address SMS fraud, academic studies that have investigated smishing detection and related technologies, and an identification of gaps in existing work that motivate this study.
+
+
+1.6.1 Industry Products
+
+Google Messages Spam Protection
+
+Google Messages, the default SMS application on most Android devices, incorporates a machine learning-based spam detection system that analyses incoming SMS messages and flags suspicious content (Google, 2024). The system operates partially on-device and partially through Google's Safe Browsing API, which checks URLs embedded in messages against a database of known phishing domains. When a message is classified as spam, it is moved to a separate spam folder, and the user receives a warning banner.
+
+Despite its wide deployment, Google Messages' spam filter has notable limitations in the Ghanaian context. The model is trained primarily on English-language spam corpora sourced from Western markets and does not account for the code-mixed language patterns common in Ghanaian SMS communications (Acheampong & Korsah, 2021). Additionally, its reliance on the Safe Browsing API requires internet connectivity, rendering the URL-checking component ineffective in offline scenarios. The system also does not differentiate between spam (unsolicited but non-malicious promotions) and fraud (actively deceptive phishing attempts), providing users with a binary classification that lacks the granularity needed for informed decision-making.
+
+Truecaller
+
+Truecaller is a crowd-sourced caller and SMS identification service that maintains a database of over 4.5 billion phone numbers, enabling users to identify unknown senders and flag spam messages (Truecaller, 2024). The application is widely used in India and several African markets and has accumulated a significant user base in Ghana. Truecaller's detection mechanism relies primarily on user reports: when multiple users flag a number as spam, it is added to a blocklist that is distributed to all users.
+
+The crowd-sourced approach introduces an inherent latency: a new scam campaign must victimise and be reported by several users before the associated number is blocked. This reactive model is particularly problematic for smishing attacks that employ rapidly rotating sender numbers or use alphanumeric sender IDs (e.g., "MoMo_Alert" or "GhanaPost") that cannot be blocklisted without also filtering legitimate communications from the impersonated entity. Furthermore, Truecaller's core functionality requires uploading the user's contact list and SMS sender information to its servers, raising significant privacy concerns (Truecaller Privacy Policy, 2024).
+
+Norton Mobile Security
+
+Norton Mobile Security provides a suite of protective features for Android devices, including SMS phishing detection, malicious URL blocking, and real-time device scanning (NortonLifeLock, 2024). The application uses signature-based detection combined with cloud-based threat intelligence to identify known phishing patterns. Norton's approach benefits from its extensive global threat database, which receives continuous updates from its network of sensors and honeypots.
+
+However, Norton Mobile Security is a premium product with subscription costs that are prohibitive for the typical Ghanaian mobile money user. Its detection models are trained on global phishing datasets and do not specialise in the types of scam messages prevalent in the Ghanaian market, such as fake delivery notifications referencing GhanaPost or fraudulent mobile money reversal requests. The application's reliance on continuous cloud connectivity for real-time threat intelligence updates further limits its applicability in low-connectivity environments.
+
+Network-Level Carrier Filters
+
+Major telecommunications operators globally, including some Ghanaian providers, deploy network-level SMS filtering systems that attempt to intercept fraudulent messages before they reach the user's device. These filters typically employ rule-based systems that match messages against known spam patterns, sender reputation databases, and volumetric anomaly detection (e.g., a single number sending thousands of messages in a short period) (GSMA, 2022).
+
+While network-level filtering provides a valuable first line of defence, it suffers from several limitations. Operators must balance aggressive filtering against the risk of blocking legitimate messages, particularly from businesses that use bulk SMS services for customer communication. In Ghana, where alphanumeric sender IDs are widely used by both legitimate companies and fraudsters, this balance is particularly difficult to strike. Additionally, network-level filters operate at the sender and message volume level and generally lack the sophisticated NLP capabilities needed to analyse message content for semantic indicators of phishing intent.
+
+
+1.6.2 Research Papers and Studies
+
+Machine Learning for SMS Spam and Phishing Detection
+
+The application of machine learning to SMS spam detection has been a productive area of research over the past decade. Early approaches predominantly employed traditional classifiers such as Naive Bayes, Support Vector Machines (SVM), and Random Forest on handcrafted features extracted from SMS text (Almeida et al., 2011). Almeida et al. (2011) introduced the UCI SMS Spam Collection dataset, which became a benchmark for subsequent research, and demonstrated that Naive Bayes achieved strong baseline performance with term frequency-inverse document frequency (TF-IDF) features.
+
+More recent work has explored deep learning approaches for SMS classification. Mishra and Soni (2022) proposed a neural network-based smishing detector that combined convolutional and recurrent layers to capture both local and sequential patterns in SMS text. Their model achieved an accuracy of 97.2% on the UCI dataset but was evaluated exclusively on English-language messages and did not address the question of on-device deployment. Roy et al. (2020) investigated the use of LSTM networks for phishing URL detection embedded within SMS messages, reporting an F1 score of 0.96 on a custom dataset. However, their approach required extracting and transmitting URLs to a cloud service for analysis, introducing both latency and privacy concerns.
+
+Transformer Models for Text Classification
+
+The introduction of the Transformer architecture (Vaswani et al., 2017) and the subsequent development of pre-trained language models such as BERT (Devlin et al., 2019) represented a paradigm shift in natural language processing. BERT's bidirectional encoding mechanism enables it to capture contextual relationships between words in both directions, producing rich representations that substantially outperform earlier approaches on a wide range of NLP benchmarks.
+
+Sanh et al. (2019) introduced DistilBERT, a distilled version of BERT that retains 97% of BERT's language understanding capabilities while reducing the number of parameters by 40% and increasing inference speed by 60%. This compression makes DistilBERT particularly suitable for resource-constrained deployment scenarios, including mobile devices. Several studies have subsequently evaluated DistilBERT for text classification tasks and reported competitive performance with significantly lower computational requirements (Tsai et al., 2020).
+
+The application of transformer models specifically to smishing detection remains relatively nascent. Jain and Gupta (2022) surveyed phishing attack techniques and defence mechanisms, noting that while transformer models showed promise for email phishing detection, their application to SMS phishing was limited by the short length of SMS messages and the computational requirements of transformer inference. This observation underscores the need for optimised deployment strategies, such as the TensorFlow Lite quantisation approach adopted in this study.
+
+On-Device Machine Learning
+
+The deployment of machine learning models directly on mobile devices— rather than on cloud servers — has emerged as a significant research direction, driven by privacy requirements, latency reduction, and offline capability (Howard et al., 2017). TensorFlow Lite, developed by Google, provides a framework for converting trained models into a compact format optimised for mobile and embedded devices, supporting both float16 and INT8 quantisation to reduce model size and inference latency (Abadi et al., 2016).
+
+Several studies have demonstrated the feasibility of on-device NLP inference. Sun et al. (2020) compressed BERT for mobile deployment using knowledge distillation, achieving a 7.5x reduction in model size with less than a 1% decrease in accuracy on the GLUE benchmark. David et al. (2021) explored TinyML — machine learning on microcontrollers — suggesting that even extremely resource-constrained devices can perform useful inference with appropriately optimised models.
+
+In the Android ecosystem, on-device ML deployment must contend with the heterogeneity of device capabilities. Entry-level smartphones common in markets such as Ghana may have as little as 1-2 GB of RAM and limited processor capabilities (IDC, 2023). Effective deployment strategies must therefore incorporate lazy model loading, memory-efficient inference configurations, and graceful fallback mechanisms for devices that cannot support model execution.
+
+Background Service Applications on Android
+
+A critical architectural consideration for SMS fraud detection is the ability of the application to operate continuously in the background, monitoring incoming messages even when the user is not actively using the application. Android's Service component provides this capability, enabling long-running operations that continue independently of the application's user interface (Android Developers, 2024a).
+
+However, Android has progressively imposed restrictions on background execution to preserve battery life and system performance. Since Android 8.0 (API level 26), background services that are not associated with a visible notification are terminated by the operating system within approximately one minute of the application leaving the foreground (Android Developers, 2024b). This restriction necessitates the use of Foreground Services, which display a persistent notification to the user and are permitted to run indefinitely.
+
+The design of background services for security-sensitive applications introduces additional considerations. The service must be registered with appropriate foreground service types (introduced in Android 10), declare the correct permissions in the application manifest, and handle the lifecycle events — creation, start commands, and destruction — robustly to ensure continuous protection (Meier, 2020). Additionally, the BroadcastReceiver component, which listens for system-wide events such as incoming SMS, must be configured with the BROADCAST_SMS permission to ensure that only the system can trigger it, preventing spoofed broadcast attacks.
+
+Research by Seneviratne et al. (2015) investigated the resource consumption patterns of background services on Android, finding that poorly designed services could significantly impact battery life and device performance. Their recommendations — including batched processing, lazy initialisation, and efficient use of coroutines — are directly applicable to the design of an SMS monitoring service that must balance continuous protection with minimal resource overhead.
+
+User Privacy and Data Security in Mobile Applications
+
+The handling of SMS data by a fraud detection application raises significant privacy and security considerations. SMS messages frequently contain sensitive information including transaction details, one-time passwords (OTPs), and personal communications. Any application that accesses SMS content must implement rigorous safeguards to ensure that this data is not exposed, leaked, or misused.
+
+The Open Web Application Security Project (OWASP) Mobile Application Security Verification Standard (MASVS) provides a comprehensive framework for mobile application security (OWASP, 2023). Key requirements relevant to an SMS fraud detection application include: data-at-rest encryption for any stored analysis results, prevention of data leakage through application backups and logs, secure storage of application preferences, and enforcement of a cleartext traffic policy to prevent accidental data transmission over unencrypted connections.
+
+In the Ghanaian context, the Data Protection Act, 2012 (Act 843) governs the collection, processing, and storage of personal data. While this legislation does not specifically address on-device processing, the principles of data minimisation, purpose limitation, and informed consent are applicable to an application that reads users' SMS messages (Data Protection Commission of Ghana, 2012). A privacy-by-design approach — where privacy protections are embedded into the system architecture rather than added as afterthoughts — is essential for building user trust and ensuring regulatory compliance.
+
+
+1.6.3 Gaps in Existing Works
+
+The review of existing industry products and academic research reveals several significant gaps that collectively motivate this study.
+
+Contextual Gap: Existing SMS fraud detection tools and research datasets are predominantly designed for and evaluated on Western, English-language markets. The unique linguistic characteristics of Ghanaian SMS communications — including code-mixing between English, Twi, and Pidgin — and the specific scam templates prevalent in the Ghanaian mobile money ecosystem are not adequately represented in current detection models. This contextual mismatch results in suboptimal detection performance when existing tools are applied to the Ghanaian market.
+
+Privacy Gap: The majority of SMS fraud detection solutions, both commercial and academic, rely on cloud-based processing. This architectural choice requires transmitting sensitive SMS content to external servers, creating privacy risks that are particularly acute for mobile money users whose messages contain financial transaction details. While on-device machine learning has been demonstrated to be technically feasible, its application to SMS fraud detection with transformer-based models remains underexplored.
+
+Granularity Gap: Existing tools typically provide binary classification — spam or not spam — without distinguishing between nuisance spam (e.g., lottery promotions, betting advertisements) and actively fraudulent messages (e.g., phishing attempts impersonating mobile money providers). This distinction is important for users: spam is an annoyance, while fraud is a direct financial threat requiring immediate attention.
+
+Explainability Gap: Current solutions generally do not explain to users why a particular message was flagged. Research in human-computer interaction has demonstrated that explanations of AI decisions significantly increase user trust and engagement (Ribeiro et al., 2016). An SMS fraud detection application that merely labels a message as "suspicious" without indicating whether the concern relates to a suspicious link, a known scam pattern, or an unrecognised sender provides limited value to users seeking to develop their own fraud recognition skills.
+
+Accessibility Gap: Cloud-dependent solutions exclude users without reliable internet connectivity. Given that mobile broadband penetration in Ghana is approximately 53% (ITU, 2023), any effective solution must be capable of performing its core detection function entirely offline.
+
+
+1.7 Conclusion
+
+This chapter has established the context, motivation, and theoretical foundations for the development of SmishGuard. Ghana's rapidly growing mobile money ecosystem, while transformative for financial inclusion, has created a fertile environment for SMS-based fraud that existing detection tools are ill-equipped to address. The identified gaps — contextual relevance, user privacy, classification granularity, decision explainability, and offline accessibility — collectively define the design space within which this study operates.
+
+SmishGuard addresses these gaps by combining a DistilBERT transformer model fine-tuned on Ghanaian SMS data with a rule-based classification engine, deployed entirely on-device via TensorFlow Lite. The resulting application classifies SMS messages into three categories (Safe, Spam, and Fraud), provides human-readable explanations for flagged messages, operates without internet connectivity, and processes all data locally on the user's device. The subsequent chapters will detail the requirements gathering process, system architecture and design, implementation, testing, and evaluation of this solution.

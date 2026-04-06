@@ -38,6 +38,9 @@ class SmishDetector private constructor(private val context: Context) : Closeabl
         private const val SAFE_CHATS_FILE = "safe_chats.csv"
         private const val MAX_SEQ_LENGTH = 128
         private const val THREAT_THRESHOLD = 0.4f
+        // Higher threshold required when no regex rule matches — prevents
+        // borderline model scores on casual messages from triggering false alarms
+        private const val MODEL_ONLY_THRESHOLD = 0.6f
 
         @Volatile
         private var instance: SmishDetector? = null
@@ -128,13 +131,19 @@ class SmishDetector private constructor(private val context: Context) : Closeabl
         val snippet = messageBody.take(60).replace("\n", " ")
         Log.d(TAG, "classify: sender=$senderName, raw=$rawThreatScore, msg=\"$snippet...\"")
 
-        // Short messages (< 15 chars) with no URLs or suspicious patterns are safe
-        // Prevents false positives on "Yo", "Hi", "Ok", etc.
-        if (messageBody.length < 15 && !messageBody.contains("http", ignoreCase = true)
-            && !messageBody.contains("bit.ly", ignoreCase = true)
-            && !Regex("\\d{4,}").containsMatchIn(messageBody)) {
-            Log.d(TAG, "Short harmless message — skipping threat classification")
-            return Triple(ThreatCategory.SAFE, rawThreatScore, "short_message")
+        // Short/casual messages with no URLs or suspicious patterns are safe.
+        // Prevents false positives on greetings like "yo what's up", "hello twinn", etc.
+        val hasUrl = messageBody.contains("http", ignoreCase = true)
+                || messageBody.contains("bit.ly", ignoreCase = true)
+        val hasDigitSequence = Regex("\\d{4,}").containsMatchIn(messageBody)
+        val isCasualGreeting = casualGreetingPattern.containsMatchIn(messageBody)
+
+        if (messageBody.length < 40 && !hasUrl && !hasDigitSequence) {
+            // Very short messages or messages matching casual greetings
+            if (messageBody.length < 15 || isCasualGreeting) {
+                Log.d(TAG, "Short/casual harmless message — skipping threat classification")
+                return Triple(ThreatCategory.SAFE, rawThreatScore, "short_casual_message")
+            }
         }
 
         // ── Step 2: Apply contact/whitelist adjustments ──
@@ -163,6 +172,15 @@ class SmishDetector private constructor(private val context: Context) : Closeabl
         // ── Step 3: If threat detected, classify as SPAM or FRAUD ──
         if (threatScore >= THREAT_THRESHOLD) {
             val (subCategory, rule) = classifyThreatType(messageBody)
+
+            // If NO specific rule matched (model_threat_default), require a higher
+            // confidence threshold. This prevents borderline model scores (0.4–0.6)
+            // on casual/conversational messages from being classified as threats.
+            if (rule == "model_threat_default" && threatScore < MODEL_ONLY_THRESHOLD) {
+                Log.d(TAG, "Model-only detection at borderline score $threatScore — treating as SAFE")
+                return Triple(ThreatCategory.SAFE, threatScore, "model_borderline_safe")
+            }
+
             val finalRule = if (contextNote != null) "$rule ($contextNote)" else rule
             Log.d(TAG, "Message classified as $subCategory (score=$threatScore, rule=$finalRule)")
             return Triple(subCategory, threatScore, finalRule)
@@ -335,6 +353,12 @@ class SmishDetector private constructor(private val context: Context) : Closeabl
      * SPAM patterns: lottery, gambling, betting, unsolicited ads
      * FRAUD patterns: phishing, fake deliveries, urgency, impersonation
      */
+
+    // Casual greeting patterns — used to detect harmless conversational messages
+    // that the model may give borderline scores to
+    private val casualGreetingPattern = Regex(
+        """(?i)^\s*(hey|hi|hello|yo|sup|what'?s\s*up|howdy|hola|good\s*(morning|afternoon|evening|night)|how\s*(are|r)\s*(you|u)|what\s*(are|r)\s*(you|u)\s*(up to|doing)|long\s*time|twin+|bro|sis|fam|charle|chale|eii|herh|boss|g[uy]\b)\b"""
+    )
 
     // Spam indicators — unsolicited but not directly deceptive
     private val spamPatterns: List<Pair<Regex, String>> = listOf(

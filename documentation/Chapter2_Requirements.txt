@@ -1,0 +1,291 @@
+Chapter 2: Requirements
+
+2.1 Introduction
+
+This chapter documents the systematic process of identifying, gathering, and analysing the requirements necessary for the development of SmishGuard, a native Android application for SMS fraud detection targeting mobile money users in Ghana. The requirements presented herein were derived through a combination of academic literature review, stakeholder identification, quantitative survey research, and qualitative semi-structured interviews.
+
+The requirements gathering process was guided by a user-centred design philosophy, recognising that the ultimate effectiveness of a security application depends not only on its technical detection capabilities but also on its usability, trustworthiness, and alignment with the real-world contexts in which users operate. To this end, the study engaged 88 survey participants and 5 semi-structured interview participants, all of whom were active mobile money users of the three major telecommunications providers in Ghana: MTN, Telecel, and AirtelTigo.
+
+This chapter begins by identifying the key stakeholders and their interactions with the system. It then presents research-informed requirements derived from existing literature and established standards. The feedback and analysis section documents the findings from user engagement activities. These inputs are synthesised into a structured set of functional and non-functional requirements, followed by a delineation of the project scope and detailed use case descriptions.
+
+
+2.2 Stakeholder Identification
+
+Stakeholders are individuals, groups, or entities with a vested interest in the successful development, deployment, or operation of the application. For SmishGuard, the following stakeholder groups were identified:
+
+Primary Users (Mobile Money Customers): The end-users of the application, specifically individuals aged 18 and above who actively use mobile money services from MTN, Telecel, or AirtelTigo in Ghana. These stakeholders are directly affected by SMS-based fraud and stand to benefit most from an effective detection system. Their primary requirements include accurate fraud detection, intuitive warning mechanisms, and assurance that their SMS data remains private.
+
+Telecommunications Companies: Mobile network operators including MTN Ghana, Telecel Ghana, and AirtelTigo. While these companies are not direct users of SmishGuard, they have a vested interest in reducing fraud-related customer complaints and maintaining user trust in their platforms. Their existing network-level filtering systems represent the current baseline against which SmishGuard's added value can be assessed.
+
+The Project Developer (Researcher): Responsible for eliciting requirements, designing and implementing the system, conducting evaluations, and ensuring that the final product meets both academic rigour and practical utility standards.
+
+Academic Supervisor and Institution (Ashesi University): Prof. Daniel Addo provides supervisory oversight, ensuring that the project meets the academic standards established by the Department of Computer Science and Information Systems at Ashesi University.
+
+Regulatory Bodies: Organisations such as the Cyber Security Authority (CSA) of Ghana, the National Communications Authority (NCA), and the Data Protection Commission, which have institutional interests in the integrity of mobile financial services and the appropriate handling of user data.
+
+
+2.3 Stakeholder Interactions
+
+Understanding how each stakeholder group interacts with the system is essential for defining its functional boundaries and information flows. The following interactions were identified:
+
+Primary Users interact with SmishGuard through the mobile application interface to:
+- View their SMS conversations with visual indicators showing the threat classification (Safe, Spam, or Fraud) assigned to each conversation.
+- Receive real-time notifications when a newly received SMS is classified as a potential threat.
+- Tap on flagged conversations to view a concise, human-readable explanation of why the message was classified as a threat.
+- Toggle the background monitoring service on or off according to their preference.
+- Access a settings screen where they can view privacy information and clear stored analysis history.
+
+The Project Developer interacts with the system during:
+- Collection and curation of the training dataset, including anonymised SMS samples contributed by survey participants.
+- Fine-tuning and evaluation of the DistilBERT classification model using Google Colab.
+- Development and iterative testing of the Android application.
+- Analysis of user feedback collected during usability testing sessions.
+
+Regulatory Bodies may interact indirectly through:
+- Assessment of the application's compliance with the Data Protection Act, 2012 (Act 843).
+- Evaluation of the application's potential contribution to national cybersecurity objectives.
+
+Telecommunications Companies may interact indirectly through:
+- Consideration of the application's approach as a potential model for enhancing their own customer protection mechanisms.
+
+
+2.4 Research-Informed Requirements
+
+A review of existing literature, established standards, and implemented SMS fraud detection systems reveals several categories of requirements that inform this project's specification.
+
+2.4.1 Algorithmic Requirements
+
+The classification model must demonstrate high precision — minimising false positives that erode user trust by incorrectly flagging legitimate messages — and high recall — minimising false negatives that expose users to undetected fraud (Mishra & Soni, 2022). Existing implementations using hybrid approaches (combining machine learning with rule-based heuristics) have demonstrated this to be achievable, with reported accuracies exceeding 90% on English-language benchmarks (Almeida et al., 2011). However, the transfer of these results to the Ghanaian linguistic context requires empirical validation using locally sourced data.
+
+The detection system should also provide granular classification rather than binary spam/not-spam categorisation. Research by Jain and Gupta (2022) emphasises the importance of distinguishing between different threat types, as user response strategies differ meaningfully: spam messages merit a different response (ignore) than phishing messages (active caution and reporting).
+
+2.4.2 Data Requirements
+
+A labelled dataset of SMS messages is required, containing both legitimate messages and examples of smishing attempts relevant to the Ghanaian context. Publicly available datasets such as the UCI SMS Spam Collection (Almeida et al., 2011) can serve as a foundational resource but must be supplemented with locally sourced examples to capture Ghana-specific patterns, sender names, and linguistic conventions.
+
+The collection of SMS data from participants must comply with privacy regulations and ethical research standards. Any data collection must be anonymised, with personally identifiable information (names, phone numbers, account details) removed prior to inclusion in training datasets. On-device processing is preferred to minimise the need for data transmission.
+
+2.4.3 Technical Requirements
+
+On-device processing is essential given the privacy considerations and connectivity constraints documented in Chapter 1. The primary classification engine must operate entirely offline, with no dependency on internet connectivity for core fraud detection functionality (Sun et al., 2020).
+
+The application must support Android devices running API level 27 (Android 8.1 Oreo) and above, as this represents the predominant operating system version range among Ghanaian smartphone users (StatCounter, 2024). The design must account for the hardware constraints of entry-level to mid-range devices prevalent in the market, including limited RAM (2–3 GB) and modest processor capabilities.
+
+Background operation capability is a fundamental requirement. The application must be capable of monitoring incoming SMS messages in real time, even when the user is not actively interacting with the application (Android Developers, 2024a). This necessitates the use of Android's Foreground Service and BroadcastReceiver components, with appropriate lifecycle management to ensure continuous protection.
+
+
+2.5 Feedback and Analysis
+
+To validate the research-informed requirements and ground the design in actual user needs, a structured feedback collection phase was conducted with mobile money users in Ghana. The study received approval from the Ashesi University Institutional Review Board (IRB) prior to data collection. Two instruments were employed: an online survey and semi-structured interviews.
+
+2.5.1 Survey Design and Administration
+
+An online survey was designed and distributed to mobile money users aged 18 and above who are customers of MTN, Telecel, or AirtelTigo in Ghana. The survey was administered via Google Forms and required approximately five minutes to complete. A convenience sampling approach was employed, with distribution through academic networks, social media platforms, and community WhatsApp groups.
+
+The survey captured four categories of information:
+1. Demographics: age range, gender, educational background, and primary telecommunications provider.
+2. Mobile Money Usage: frequency of mobile money transactions, types of transactions performed, and duration of mobile money usage.
+3. Fraud Experience: frequency of receiving suspicious SMS messages, types of fraudulent messages encountered, actions taken upon receiving suspicious messages, and whether the participant had ever been a victim of SMS-based fraud.
+4. Application Preferences: desired features for an SMS fraud detection application, attitudes toward granting SMS access permissions, and preferences regarding notification behaviour.
+
+A total of 88 participants completed the survey. The demographic composition reflected the target user population: participants ranged in age from 18 to 55+, were distributed across all three major telecommunications providers, and represented diverse educational backgrounds from secondary school to postgraduate education.
+
+[Figure 2.1: Survey demographic distribution — TO BE INSERTED]
+
+2.5.2 Semi-Structured Interviews
+
+A subset of five survey respondents who indicated willingness to participate in further research were invited for semi-structured interviews. Each interview lasted approximately 15 minutes and was conducted via a combination of in-person and virtual formats. Interviews were audio-recorded with the explicit consent of each participant and subsequently transcribed for thematic analysis.
+
+The interview protocol explored the following themes:
+- Personal experiences with SMS-based fraud, including specific examples of fraudulent messages received.
+- Current strategies for identifying and responding to suspicious messages.
+- Attitudes toward mobile applications that request access to SMS data.
+- Perceptions of privacy and data security in the context of mobile money usage.
+- Desired features and concerns regarding an SMS fraud detection application.
+
+2.5.3 Key Findings
+
+The data collected from surveys and interviews revealed several themes that directly informed the requirements specification.
+
+Prevalence of SMS Fraud Exposure: A substantial majority of survey respondents reported receiving suspicious SMS messages, with many indicating that they received such messages on a weekly or monthly basis. This finding confirms the severity of the problem and validates the need for automated detection.
+
+[Figure 2.2: Frequency of suspicious SMS messages received — TO BE INSERTED]
+
+Limited Awareness of Detection Tools: Most participants reported that they did not currently use any dedicated tool or application for detecting SMS fraud. Those who did use such tools primarily relied on Truecaller for caller identification rather than SMS content analysis. This finding suggests a significant unmet need in the market.
+
+Privacy Sensitivity with Conditional Trust: Interview participants expressed nuanced attitudes toward privacy. While participants were generally cautious about granting applications access to their SMS messages, the majority indicated that they would be willing to grant such access if the application provided clear assurances that data would be processed locally on their device and not transmitted to external servers. This finding directly supports the on-device processing requirement.
+
+Desire for Explanations: Both survey respondents and interview participants emphasised the importance of understanding why a message was flagged. Participants expressed that they would be more likely to trust and act on a warning if it was accompanied by a brief explanation (e.g., "This message contains a suspicious link" or "This sender is not in your contacts"). This finding supports the requirement for classification explainability.
+
+Preference for Automatic Background Detection: Participants consistently expressed a preference for a detection system that operates automatically in the background without requiring them to manually check each message. The desired behaviour was described as "it should just alert me when something is wrong" — confirming the requirement for a background service that monitors incoming SMS in real time.
+
+[Figure 2.3: Preferred features for SMS fraud detection app — TO BE INSERTED]
+
+
+2.6 Synthesis of Requirements
+
+Based on the research-informed analysis and user feedback, the following requirements were synthesised for SmishGuard.
+
+
+2.6.1 Functional Requirements
+
+Core Detection Features
+
+FR-01: The system shall request and, upon user approval, maintain permission to read SMS messages stored on the device.
+
+FR-02: The system shall request and, upon user approval, maintain permission to receive notifications of incoming SMS messages via the system broadcast mechanism.
+
+FR-03: The system shall register a background foreground service that monitors for incoming SMS broadcasts in real time, displaying a persistent notification to indicate active protection.
+
+FR-04: Upon receiving a new SMS, the system shall automatically extract its text content and sender information and pass it to the on-device classification engine.
+
+FR-05: The classification engine shall categorise each SMS into one of three categories: Safe, Spam, or Fraud, using a hybrid approach combining a fine-tuned DistilBERT model with rule-based heuristics.
+
+FR-06: For messages classified as Spam or Fraud, the system shall generate a notification alerting the user to the potential threat.
+
+FR-07: The system shall provide a brief, human-readable explanation of why a message was flagged, indicating the specific detection rule or model signal that triggered the classification (e.g., "Message contains a suspicious link," "Message impersonates a delivery service," "Message shares a similar structure to known fraudulent SMS messages").
+
+User Interface Features
+
+FR-08: The system shall display all SMS conversations in a scrollable list, with visual indicators (colour-coded dots and background shading) distinguishing Safe, Spam, and Fraud conversations.
+
+FR-09: Users shall be able to tap on a flagged conversation to view a dialog that explains the threat classification, including the confidence score, the specific reason for flagging, and whether the sender is in the user's contacts.
+
+FR-10: The system shall display the sender's contact name (if available in the user's contacts) alongside the phone number for each conversation.
+
+FR-11: Users shall be able to pull down on the conversation list to refresh and re-scan for newly received messages.
+
+Settings and Control Features
+
+FR-12: Users shall be able to toggle the background monitoring service on or off through a switch in the main application interface.
+
+FR-13: The system shall provide a settings screen where users can view privacy policy information detailing how their SMS data is handled.
+
+FR-14: Users shall be able to clear all stored analysis results from the local database through a dedicated option in the settings screen.
+
+
+2.6.2 Non-Functional Requirements
+
+Performance
+
+NFR-01: The classification engine shall process a single SMS message within 5 seconds on a mid-range Android device (e.g., Samsung Galaxy J7 with 3 GB RAM).
+
+NFR-02: The application shall load and display the conversation list within 10 seconds of launch, including the initial model loading and message scanning phases.
+
+NFR-03: The background service shall consume no more than 5% of the device's battery over a 24-hour period during normal operation.
+
+Privacy and Security
+
+NFR-04: All SMS analysis shall be performed entirely on-device. No SMS content, sender information, or classification results shall be transmitted to any external server.
+
+NFR-05: Stored analysis results shall be encrypted using AES-256 encryption via Android's EncryptedSharedPreferences and Room database encryption.
+
+NFR-06: The application shall set android:allowBackup="false" to prevent analysis data from being included in device backups.
+
+NFR-07: The application shall enforce a cleartext traffic policy blocking all unencrypted HTTP connections via a network security configuration.
+
+NFR-08: The application shall not log SMS message content at any point; only metadata (sender name, classification result, confidence score) may be logged for debugging purposes.
+
+Usability and Compatibility
+
+NFR-09: The application shall support Android devices running API level 27 (Android 8.1 Oreo) and above.
+
+NFR-10: The application shall function entirely offline for core classification operations. Internet connectivity shall not be required for SMS monitoring, classification, or result display.
+
+NFR-11: The user interface shall follow Material Design guidelines to ensure a familiar and intuitive experience for Android users.
+
+Reliability
+
+NFR-12: The background monitoring service shall automatically restart if terminated by the operating system, using the START_STICKY service restart policy.
+
+NFR-13: The classification engine shall gracefully fall back to heuristic-only detection if the TFLite model fails to load, ensuring that some level of protection is always available.
+
+
+2.7 Scope of Addressed Requirements
+
+This section delineates the boundaries of SmishGuard's development scope, distinguishing between requirements that are addressed in this project and those that are deferred to future work.
+
+Within Scope: All functional requirements (FR-01 through FR-14) and non-functional requirements (NFR-01 through NFR-13) listed in Section 2.6 are addressed in this project. The core deliverable is a functioning Android application that performs on-device SMS fraud detection using a fine-tuned DistilBERT model, provides a three-category classification (Safe, Spam, Fraud) with explanations, operates via a background foreground service, and adheres to the specified privacy and security requirements.
+
+Outside Scope: The following capabilities are explicitly excluded from this project's scope due to constraints of time, resources, or platform limitations:
+- iOS platform support, due to Apple's restrictions on background SMS access by third-party applications.
+- Cloud-based model updates or federated learning, which would enable the model to improve over time based on aggregated user feedback without centralising data.
+- Multi-language NLP models for Twi or Pidgin text classification, as the current training dataset is predominantly English-language. The rule-based heuristic layer does accommodate some local language patterns.
+- Integration with telecommunications company APIs for real-time sender verification.
+- User reporting mechanisms for false positives and false negatives, which would require a backend service.
+
+The scope was defined to prioritise delivering a fully functional, privacy-preserving core detection system that can be meaningfully evaluated through user testing. Excluded features represent natural extensions that could be addressed in future iterations.
+
+
+2.8 Use Case Descriptions
+
+This section describes the primary use cases that define SmishGuard's core functionality, illustrating how users and system components interact to achieve the application's objectives.
+
+Use Case 1: Real-Time SMS Monitoring and Classification
+
+[Figure 2.4: Use case diagram for real-time SMS monitoring — TO BE INSERTED]
+
+Description: This use case covers the primary detection workflow, from the arrival of a new SMS on the user's device through classification and notification.
+
+Actors: System (Android OS), SmishGuard Background Service, SmishGuard Classification Engine, User.
+
+Preconditions: SmishGuard is installed, SMS permissions have been granted, and the background monitoring service is active (protection toggle is ON).
+
+Main Flow:
+1. A new SMS arrives on the user's device.
+2. The Android system broadcasts an SMS_RECEIVED intent.
+3. SmishGuard's BroadcastReceiver intercepts the broadcast and extracts the sender address and message body.
+4. The receiver forwards the extracted data to the SmsMonitorService via a foreground service intent.
+5. The service invokes the SmishDetector classification engine.
+6. The classification engine runs the message through the DistilBERT TFLite model to obtain a raw threat score.
+7. The score is adjusted based on whether the sender is in the user's contacts (40% reduction) or is a whitelisted sender (30% reduction).
+8. If the adjusted score exceeds the threat threshold (0.4), the engine applies regex-based rules to categorise the threat as Spam or Fraud.
+9. The classification result (category, confidence, matched rule) is stored in the Room database.
+10. If the message is classified as Spam or Fraud, the service generates a notification alerting the user.
+
+Alternative Flow: If the TFLite model fails to load (e.g., due to insufficient memory), the classification engine falls back to heuristic-only detection using the regex rule patterns.
+
+
+Use Case 2: Viewing Conversations with Threat Indicators
+
+[Figure 2.5: Use case diagram for conversation viewing — TO BE INSERTED]
+
+Description: This use case describes how users view their SMS conversations within the application and identify flagged messages.
+
+Actors: User, SmishGuard Application.
+
+Preconditions: SmishGuard is installed and has been granted SMS read permission. At least one SMS conversation exists on the device.
+
+Main Flow:
+1. The user launches SmishGuard.
+2. The application scans all unanalysed messages using the classification engine.
+3. The conversation list is displayed, sorted by most recent message timestamp.
+4. Each conversation is displayed with the sender name (or phone number), last message preview, timestamp, and message count.
+5. Conversations classified as Spam are indicated with a blue dot, blue confidence text, and a light blue background.
+6. Conversations classified as Fraud are indicated with an orange dot, orange confidence text, and a light orange background.
+7. Safe conversations are displayed with the default white background and no indicator.
+8. The user can pull down on the list to refresh and re-scan for new messages.
+
+
+Use Case 3: Viewing Threat Explanations
+
+Description: This use case describes how users access detailed information about why a particular conversation was flagged.
+
+Actors: User, SmishGuard Application.
+
+Preconditions: The user is viewing the conversation list and at least one conversation has been classified as Spam or Fraud.
+
+Main Flow:
+1. The user taps on a conversation that displays a Spam or Fraud indicator.
+2. The application displays an AlertDialog with the title "Spam Detected" or "Fraud Alert."
+3. The dialog body contains the sender name, confidence percentage, and one or two explanatory sentences.
+4. If the sender is not in the user's contacts, the explanation includes "Sender is not in your contacts."
+5. The matched rule is translated into a human-readable explanation (e.g., "Message threatens account suspension to pressure you into acting" for the account_threat rule).
+6. The user taps "OK" to dismiss the dialog.
+
+
+2.9 Conclusion
+
+This chapter has systematically documented the requirements for SmishGuard through a combination of literature review, stakeholder analysis, quantitative survey research, and qualitative interviews. The engagement of 88 survey participants and 5 interview participants provided empirical grounding for the design decisions, confirming the prevalence of SMS fraud, the desire for automatic background detection, the importance of privacy assurances, and the value of classification explanations.
+
+The synthesised requirements — 14 functional and 13 non-functional — define a system that performs on-device, three-category SMS classification using a hybrid ML and rule-based approach, provides human-readable explanations for flagged messages, operates as an always-on background service, and adheres to strict privacy and security standards. The subsequent chapter will present the system architecture and design that implements these requirements.

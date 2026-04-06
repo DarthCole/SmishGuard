@@ -1,0 +1,416 @@
+Chapter 4: Implementation
+
+4.1 Introduction
+
+This chapter provides a detailed account of the implementation of SmishGuard, translating the architectural design presented in Chapter 3 into a functioning Android application. The presentation proceeds through the major implementation phases in logical order: model training and export, core classification engine development, background service integration, user interface construction, and privacy and security hardening.
+
+For each implementation phase, the chapter describes the technical approach, the rationale for key implementation decisions, the challenges encountered and their resolutions, and the correspondence between the implementation and the requirements specified in Chapter 2. Code excerpts are presented to illustrate significant implementation patterns.
+
+
+4.2 Development Environment and Build Configuration
+
+SmishGuard was developed using Android Studio Hedgehog (2023.1.1) with the following build stack:
+
+- Programming Language: Kotlin 1.9.22
+- Android Gradle Plugin: 8.2.2
+- Gradle Build System: 8.5
+- Java Development Kit: JDK 17 (Microsoft OpenJDK)
+- Compile SDK: Android 14 (API 34)
+- Minimum SDK: Android 8.1 Oreo (API 27)
+- Target SDK: Android 14 (API 34)
+
+The minimum SDK level of API 27 was chosen to balance device coverage with the foreground service capabilities introduced in Android 8.0 and refined in 8.1. The target SDK of API 34 ensures compliance with the latest Google Play requirements and security best practices.
+
+Key dependencies include:
+
+- TensorFlow Lite Runtime (v2.14.0): Provides the inference engine for executing the DistilBERT model on-device.
+- TensorFlow Lite Support Library (v0.4.4): Provides utility classes for tensor manipulation and model metadata handling.
+- AndroidX Room (v2.6.1): Provides the abstraction layer over SQLite for structured local data persistence.
+- AndroidX Security-Crypto (v1.0.0): Provides EncryptedSharedPreferences for secure storage of user preferences.
+- Kotlin Coroutines (v1.7.3): Provides structured concurrency primitives for asynchronous operations.
+- Material Components (v1.11.0): Provides Material Design UI components and theming support.
+
+The build configuration includes the directive android.defaultConfig.ndk.abiFilters for all standard Android ABIs and a noCompress directive for .tflite files to ensure that the TFLite model is memory-mapped directly from the APK without decompression overhead:
+
+    androidResources {
+        noCompress += "tflite"
+    }
+
+Additionally, the application is configured with android:largeHeap="true" in the manifest to request an expanded memory allocation, accommodating the 127 MB TFLite model.
+
+
+4.3 Model Training and Export
+
+The classification model at the core of SmishGuard is a DistilBERT transformer (Sanh et al., 2019) fine-tuned for binary SMS classification (Safe vs. Threat). This section documents the training pipeline.
+
+4.3.1 Dataset
+
+The model was fine-tuned on a dataset titled Ghana_sms_text.csv, comprising SMS messages labelled as either legitimate or fraudulent. The dataset was assembled from two sources: (1) publicly available SMS datasets, supplemented with (2) locally collected SMS samples contributed by survey participants during the requirements gathering phase documented in Chapter 2. All contributed messages were anonymised prior to inclusion, with personally identifiable information (names, phone numbers, and account numbers) replaced with placeholder tokens.
+
+The dataset was preprocessed to remove duplicate messages, normalise whitespace, and balance the class distribution through oversampling of the minority class (fraudulent messages). The final training set contained a balanced representation of both classes sufficient for fine-tuning.
+
+4.3.2 Fine-Tuning Process
+
+The model was fine-tuned using the Hugging Face Transformers library (Wolf et al., 2020) on Google Colab, leveraging a GPU-accelerated runtime. The fine-tuning procedure followed standard practices for text classification with transformer models:
+
+1. The pre-trained DistilBERT base model (distilbert-base-uncased) was loaded with its associated WordPiece tokeniser (vocabulary size: 30,522 tokens).
+
+2. A classification head was added on top of the [CLS] token output, consisting of a linear layer mapping the 768-dimensional hidden state to 2 output logits (Safe and Threat).
+
+3. The model was fine-tuned for multiple epochs using the AdamW optimiser with a learning rate of 2e-5, a batch size of 16, and a linear learning rate schedule with warmup.
+
+4. Training and validation losses were monitored to detect overfitting. The model checkpoint with the lowest validation loss was selected for deployment.
+
+4.3.3 Export to TensorFlow Lite
+
+The fine-tuned PyTorch model was exported to TensorFlow Lite format for on-device deployment through the following pipeline:
+
+1. PyTorch to ONNX: The model was exported to the ONNX interchange format using torch.onnx.export(), specifying the input tensor shapes (batch_size=1, sequence_length=128) and dynamic axes for batch size flexibility.
+
+2. ONNX to TensorFlow: The ONNX model was converted to a TensorFlow SavedModel using the onnx-tf library.
+
+3. TensorFlow to TFLite: The SavedModel was converted to TFLite format using the TFLite Converter with float16 quantisation. Float16 quantisation was chosen over full int8 quantisation because it provides a 2x size reduction while preserving classification accuracy, which is critical for a security-sensitive application where false negatives have material consequences.
+
+The resulting TFLite model file (smishguard_model.tflite) is 127 MB. While this is substantial for a mobile application, it is viable given the largeHeap configuration and the lazy loading strategy described below.
+
+
+4.4 Classification Engine Implementation
+
+The SmishDetector class implements the hybrid classification pipeline designed in Chapter 3. This section details the key implementation patterns.
+
+4.4.1 Singleton Pattern with Lazy Loading
+
+The SmishDetector is implemented as a Kotlin singleton using the double-checked locking pattern:
+
+    companion object {
+        @Volatile
+        private var instance: SmishDetector? = null
+
+        fun getInstance(context: Context): SmishDetector {
+            return instance ?: synchronized(this) {
+                instance ?: SmishDetector(context.applicationContext).also {
+                    instance = it
+                }
+            }
+        }
+    }
+
+The @Volatile annotation ensures that the instance field is visible to all threads immediately upon assignment. The synchronized block prevents race conditions during initial creation. The use of context.applicationContext (rather than the Activity or Service context) prevents memory leaks by avoiding a reference to a potentially short-lived component.
+
+Model loading is further deferred using a lazy loading mechanism: the TFLite interpreter is not instantiated during SmishDetector initialisation. Instead, only lightweight assets (the vocabulary map, safe senders list, and safe chats list) are loaded in the init block. The 127 MB TFLite model is loaded only when the first classify() call is made, via the ensureModelLoaded() method:
+
+    @Synchronized
+    private fun ensureModelLoaded() {
+        if (!modelLoadAttempted) {
+            modelLoadAttempted = true
+            interpreter = loadModel()
+        }
+    }
+
+This approach was adopted after early testing revealed that eager model loading during Application.onCreate() caused Out of Memory (OOM) crashes on the target device (Samsung Galaxy J7, 3 GB RAM). By deferring the load, the application can start and render its UI before committing to the memory-intensive model allocation.
+
+4.4.2 WordPiece Tokenisation
+
+The tokenisation implementation replicates the WordPiece algorithm used by the original DistilBERT tokeniser. The vocabulary (30,522 tokens) is loaded from a text file bundled in the application's assets directory. Tokenisation proceeds as follows:
+
+1. The input text is lowercased and split on whitespace boundaries.
+2. For each word, the algorithm first attempts an exact vocabulary lookup.
+3. If the word is not present in the vocabulary, it is decomposed into subword units. The algorithm iteratively finds the longest prefix substring present in the vocabulary, marks subsequent subword pieces with the "##" prefix, and continues until the entire word has been tokenised. Characters not found in any vocabulary entry are replaced with the [UNK] (unknown) token.
+4. Special tokens are prepended and appended: [CLS] (token ID 101) at the start and [SEP] (token ID 102) at the end, following the BERT input format convention.
+5. The token sequence is padded to a fixed length of 128 tokens (MAX_SEQ_LENGTH), matching the model's expected input dimension.
+
+This implementation was validated against the Hugging Face Python tokeniser to ensure that identical inputs produce identical token sequences, which is essential for consistent model behaviour between training and inference environments.
+
+4.4.3 Model Inference
+
+The TFLite model accepts two input tensors of shape [1, 128]:
+
+- input_ids: The padded token ID sequence.
+- attention_mask: A binary mask indicating which positions contain real tokens (1) versus padding (0).
+
+The model returns an output tensor of shape [1, 2], representing the softmax probabilities for the Safe (index 0) and Threat (index 1) classes. The Threat probability is extracted as the raw threat score.
+
+The inference is executed using TensorFlow Lite's runForMultipleInputsOutputs() method, which accepts an array of input tensors and a map of output indices to output buffers:
+
+    val inputs = arrayOf(inputIds, inputMask)
+    val outputs = mapOf(0 to output)
+    interp.runForMultipleInputsOutputs(inputs, outputs)
+
+The interpreter is configured with a single inference thread to minimise CPU contention with other application components. Error handling wraps the inference call in a try-catch block, falling back to heuristic-only detection if the model produces a runtime exception.
+
+4.4.4 Contextual Score Adjustment
+
+After obtaining the raw threat score from the model, the engine applies contextual adjustments based on the sender's identity:
+
+- Contact Adjustment: If the sender's phone number is found in the user's device contacts, the threat score is multiplied by 0.6 (a 40% reduction). This reflects the reasonable assumption that messages from known contacts are less likely to be fraudulent, while preserving the ability to flag genuinely suspicious content from compromised or spoofed contact numbers.
+
+- Whitelist Adjustment: If the sender's name matches an entry in the curated safe senders list (safe_senders.txt, containing 18 known legitimate Ghanaian service numbers such as "MTN," "Telecel," and "ECG") or the safe chats list (safe_chats.csv, containing 35 entries), the score is multiplied by 0.7 (a 30% reduction).
+
+These adjustments are multiplicative rather than subtractive, ensuring that the magnitude of the adjustment is proportional to the initial threat assessment. A message with a raw score of 0.9 from a contact is adjusted to 0.54 (still above the 0.4 threshold), while a message with a raw score of 0.5 from a contact is adjusted to 0.3 (below the threshold). This proportional approach prevents contacts and whitelisted senders from receiving blanket immunity while still recognising the reduced prior probability of fraud.
+
+4.4.5 Short Message Filter
+
+An additional safeguard was implemented to prevent false positives on short, innocuous messages. Messages shorter than 15 characters that do not contain URLs, URL shorteners (e.g., "bit.ly"), or sequences of four or more consecutive digits are immediately classified as SAFE, bypassing the model entirely. This filter addresses a pattern observed during testing where the model occasionally assigned moderate threat scores to brief conversational messages (e.g., "Ok," "Thanks," "Coming now") due to the limited context available for classification.
+
+4.4.6 Rule-Based Subcategorisation
+
+For messages exceeding the threat threshold (0.4), the rule engine applies 16 regex patterns to determine the specific subcategory:
+
+Ten fraud patterns detect indicators of active deception:
+- verify_demand: Detects messages demanding verification of personal information (e.g., "verify your address," "confirm your identity").
+- account_threat: Detects messages threatening account suspension or blocking.
+- fake_delivery: Detects messages impersonating delivery services with action demands.
+- phishing_url: Detects URLs containing known phishing domains (e.g., "ghanapost" variations, "lihi.cc").
+- whatsapp_scam: Detects messages directing users to WhatsApp numbers, a common vector for follow-up social engineering.
+- job_scam: Detects messages advertising fraudulent employment opportunities.
+- delivery_impersonation: Detects messages impersonating international courier services (DHL, FedEx, UPS).
+- fake_fine: Detects messages claiming outstanding tickets or fines.
+- urgency_scam: Detects messages using urgency language ("last reminder," "will be returned").
+- suspicious_tld: Detects URLs with top-level domains commonly associated with phishing (.cn, .top, .xyz, .tk).
+
+Six spam patterns detect unsolicited but not directly deceptive content:
+- lottery_keywords: General lottery and jackpot language.
+- lottery_brand: Specific Ghanaian lottery brands (Afriluck, NLA).
+- lottery_shortcode: USSD dial codes associated with lottery services.
+- win_money: Messages claiming monetary prizes.
+- gambling_keywords: Betting and gambling vocabulary.
+- promo_language: Promotional and subscription solicitation language.
+
+Fraud patterns are evaluated first, as fraud represents a higher-severity threat that warrants priority classification. If no fraud pattern matches but a spam pattern does, the message is classified as SPAM. If no patterns match (the model flagged the message based on statistical analysis but no specific rule applies), the message is classified as FRAUD by default with the rule name "model_threat_default," reflecting a conservative safety posture.
+
+4.4.7 Heuristic Fallback Engine
+
+When the TFLite model is unavailable (due to loading failure or insufficient memory), the SmishDetector degrades to a heuristic-only classification mode. The fallback engine applies eight weighted regex patterns that collectively estimate a threat score. Each pattern carries a weight (ranging from 0.3 to 0.4), and the weights of all matching patterns are summed to produce a cumulative threat score. This additive approach means that messages matching multiple heuristic patterns receive higher scores, reflecting a higher confidence in the threat assessment.
+
+The heuristic patterns cover the most prevalent SMS fraud indicators: urgency language, prize and reward claims, account verification demands, URL-bearing call-to-action phrases, shortened URLs, credential solicitation, service termination threats, and employment scams.
+
+
+4.5 Background Service Implementation
+
+The background monitoring capability is delivered through the coordinated operation of two Android components: the SmsReceiver (BroadcastReceiver) and the SmsMonitorService (Foreground Service).
+
+4.5.1 SMS Broadcast Interception
+
+The SmsReceiver is registered in the AndroidManifest.xml with an intent filter for the android.provider.Telephony.SMS_RECEIVED action and the android.permission.BROADCAST_SMS permission:
+
+    <receiver
+        android:name=".service.SmsReceiver"
+        android:enabled="true"
+        android:exported="true"
+        android:permission="android.permission.BROADCAST_SMS">
+        <intent-filter android:priority="999">
+            <action android:name="android.provider.Telephony.SMS_RECEIVED" />
+        </intent-filter>
+    </receiver>
+
+The priority="999" attribute ensures that SmishGuard receives the SMS broadcast before most other applications, minimising the window between message arrival and classification. The BROADCAST_SMS permission restricts the receiver to broadcasts sent by the system's telephony framework, preventing spoofed broadcasts from malicious applications.
+
+When a broadcast is received, the SmsReceiver extracts the PDU (Protocol Data Unit) byte arrays from the intent extras, parses each PDU into an SmsMessage object, and concatenates the message bodies. It then constructs a service intent with four extras — the message body, a generated message ID (from the current timestamp), a thread ID, and the sender address — and forwards it to the SmsMonitorService using startForegroundService():
+
+    val serviceIntent = Intent(context, SmsMonitorService::class.java).apply {
+        action = SmsMonitorService.ACTION_ANALYZE_MESSAGE
+        putExtra(SmsMonitorService.EXTRA_MESSAGE_BODY, fullMessage)
+        putExtra(SmsMonitorService.EXTRA_MESSAGE_ID, System.currentTimeMillis())
+        putExtra(SmsMonitorService.EXTRA_THREAD_ID, -1L)
+        putExtra(SmsMonitorService.EXTRA_SENDER, senderAddress)
+    }
+    context.startForegroundService(serviceIntent)
+
+4.5.2 Foreground Service Operation
+
+The SmsMonitorService extends Android's Service class and operates as a foreground service with two notification channels:
+
+1. Monitor Channel (smishguard_monitor_channel): Hosts the persistent notification that indicates active protection. This notification is displayed continuously while the service is running and cannot be dismissed by the user.
+
+2. Alert Channel (smishguard_alert_channel): Hosts individual threat alert notifications generated when a message is classified as Spam or Fraud. These notifications are dismissible and use the high importance level to ensure visibility.
+
+Upon receiving a message analysis intent, the service launches a Kotlin coroutine within a service-scoped CoroutineScope (Dispatchers.IO + SupervisorJob()). The coroutine performs the classification asynchronously on a background thread, preventing the main thread from blocking during model inference. The SupervisorJob ensures that if one analysis coroutine fails (e.g., due to an unexpected exception), other concurrent analyses continue unaffected.
+
+After classification, the coroutine stores the result in the Room database and, for threat classifications, invokes the showThreatAlert() method. The alert notification displays the sender's name, the threat category ("Potential Spam" or "Potential Fraud"), and the confidence percentage. Tapping the notification launches the main activity, bringing the user to the conversation list where they can view the full threat explanation.
+
+4.5.3 Contact Lookup
+
+For each incoming message, the service performs a contact lookup using the ContactsContract.PhoneLookup content provider to determine whether the sender's phone number exists in the user's device contacts. This lookup is performed within a try-catch block that returns false on any exception (including SecurityException if the READ_CONTACTS permission has been revoked), ensuring that the contact check never crashes the analysis pipeline.
+
+
+4.6 Data Persistence Implementation
+
+4.6.1 Room Database
+
+The SmishGuardDatabase is implemented as a Room database singleton:
+
+    @Database(
+        entities = [AnalysisResultEntity::class],
+        version = 5,
+        exportSchema = false
+    )
+    abstract class SmishGuardDatabase : RoomDatabase() {
+        abstract fun analysisResultDao(): AnalysisResultDao
+
+        companion object {
+            @Volatile
+            private var INSTANCE: SmishGuardDatabase? = null
+
+            fun getInstance(context: Context): SmishGuardDatabase {
+                return INSTANCE ?: synchronized(this) {
+                    val instance = Room.databaseBuilder(
+                        context.applicationContext,
+                        SmishGuardDatabase::class.java,
+                        "smishguard_database"
+                    ).fallbackToDestructiveMigration()
+                     .build()
+                    INSTANCE = instance
+                    instance
+                }
+            }
+        }
+    }
+
+The database uses fallbackToDestructiveMigration() during the development phase, which recreates the database schema when the version number changes. This approach is acceptable during development and early deployment, as analysis results are transient and can be regenerated by re-scanning messages. For production deployments, proper migration strategies would be implemented to preserve user data across schema changes.
+
+4.6.2 Data Access Object
+
+The AnalysisResultDao defines queries for all required database operations. The insertResult() method uses the OnConflictStrategy.REPLACE strategy, allowing re-analysis of previously classified messages to overwrite stale results. Queries support retrieval by message ID (for enriching individual messages), by thread ID (for determining conversation-level threat status), and bulk deletion (for the clear history feature).
+
+4.6.3 SMS Repository
+
+The SmsRepository coordinates data from multiple sources to construct the SmsConversation objects displayed in the user interface:
+
+1. It queries the device's SMS content provider (content://sms) to retrieve all SMS conversations, grouped by thread ID.
+
+2. For each conversation, it queries the Room database's analysis results to determine the highest-severity threat classification within the thread. If any message in the thread is classified as FRAUD, the entire conversation is displayed as FRAUD. If any message is SPAM (and none are FRAUD), the conversation is displayed as SPAM.
+
+3. It resolves the sender's phone number to a contact name using the ContactsContract content provider, providing a human-readable sender name when available.
+
+4. For flagged conversations, it propagates the matched rule name to the SmsConversation's threatReason field, enabling the explanation dialog to display meaningful information.
+
+The scanUnanalyzedMessages() method identifies messages that have not yet been processed by the classification engine and analyses them in batch. During batch scanning, the isInContacts parameter is set to false, as the batch scan is designed to process historical messages where the contact context is not readily available. This design decision was made after testing revealed that passing isInContacts=true during batch scans produced inconsistent results depending on whether the contact was added before or after the messages were received.
+
+
+4.7 User Interface Implementation
+
+4.7.1 Conversation List
+
+The primary interface is implemented in ConversationsFragment, which displays SMS conversations in a RecyclerView using the ConversationAdapter. Each list item presents:
+
+- The sender's name (resolved from contacts) or phone number.
+- A preview of the last message in the conversation.
+- The timestamp of the last message.
+- The total number of messages in the conversation.
+
+4.7.2 Visual Threat Indicators
+
+The ConversationAdapter applies visual differentiation based on the threat classification:
+
+- SPAM conversations: A blue dot indicator, blue-coloured confidence text showing the percentage (e.g., "56%"), and a light blue background tint on the list item.
+- FRAUD conversations: An orange dot indicator, orange-coloured confidence text, and a light orange background tint.
+- SAFE conversations: No dot indicator, no confidence text, and the default white background.
+
+These indicators are applied in the adapter's bind() method using conditional logic based on the SmsConversation's threatCategory field. The colour-coded scheme provides immediate visual scanning capability, allowing users to identify potential threats at a glance without reading each message.
+
+4.7.3 Threat Explanation Dialog
+
+When a user taps on a flagged conversation, the ConversationsFragment displays an AlertDialog with a detailed explanation. The dialog construction maps the matched rule name (stored in the database) to human-readable explanation text through a when statement:
+
+    val explanation = when {
+        rule.contains("verify_demand") ->
+            "Message asks you to verify personal information..."
+        rule.contains("account_threat") ->
+            "Message threatens account suspension to pressure you into acting"
+        rule.contains("fake_delivery") ->
+            "Message impersonates a delivery service..."
+        rule.contains("phishing_url") ->
+            "Message contains a suspicious link..."
+        ...
+    }
+
+The dialog title varies by category ("Spam Detected" for SPAM, "Fraud Alert" for FRAUD), and the body includes the sender name, the confidence percentage, the human-readable explanation, and a note indicating whether the sender is in the user's contacts. This implementation directly addresses the explainability requirement (FR-07) identified in Chapter 2 and validated through user feedback.
+
+4.7.4 Protection Toggle
+
+The MainActivity hosts the SmishGuard protection toggle, a prominent switch control that allows users to enable or disable the background monitoring service. The toggle state is persisted using EncryptedSharedPreferences:
+
+    private val encryptedPrefs by lazy {
+        EncryptedSharedPreferences.create(
+            "smishguard_prefs",
+            MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC),
+            application,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
+    }
+
+When the toggle is switched on, the ViewModel calls startForegroundService() to launch the SmsMonitorService. When switched off, it calls stopService(). The persisted state ensures that the toggle reflects the correct service status when the application is relaunched.
+
+4.7.5 Settings and Privacy
+
+The SettingsFragment provides two key features:
+
+1. Privacy Information Display: A text section explaining SmishGuard's data handling practices in clear, non-technical language — specifically that all SMS analysis occurs on-device and no data is transmitted to external servers.
+
+2. Clear Analysis History: A button that deletes all records from the analysis_results table in the Room database, allowing users to reset the application's classification history. This action requires user confirmation via an AlertDialog to prevent accidental data loss.
+
+
+4.8 Privacy and Security Implementation
+
+This section consolidates the security-related implementation details that collectively satisfy the non-functional requirements NFR-04 through NFR-08.
+
+4.8.1 On-Device Processing
+
+The application contains no networking libraries, API clients, or HTTP request code. The TFLite model, vocabulary, and rule patterns are all bundled within the APK as asset files. The build.gradle.kts file contains no dependencies on networking libraries such as OkHttp, Retrofit, or Volley. This architectural constraint is enforced at the dependency level: the absence of networking capabilities makes it structurally impossible for the application to transmit SMS data, even in the event of a logic error.
+
+4.8.2 Encrypted Preferences
+
+User preferences are stored using EncryptedSharedPreferences, which encrypts keys using the AES256-SIV scheme and values using the AES256-GCM scheme. The encryption master key is managed by Android's Keystore system, which stores cryptographic keys in hardware-backed secure storage on supported devices. This ensures that even if the application's data directory is accessed by a rooted device or forensic tool, the preference values remain encrypted.
+
+4.8.3 Backup Prevention
+
+The AndroidManifest declares android:allowBackup="false", preventing the application's data from being included in Android Auto Backup operations. This prevents classification results from being stored in the user's Google Drive backup, which would expose the data to a different threat model (cloud storage security) than the on-device model that SmishGuard is designed to protect against.
+
+4.8.4 Network Security Configuration
+
+A custom network_security_config.xml is referenced in the AndroidManifest:
+
+    android:networkSecurityConfig="@xml/network_security_config"
+
+This configuration blocks all cleartext (HTTP) traffic from the application, ensuring that if any future dependency or code change inadvertently attempts a network connection, it will fail unless it uses HTTPS. While SmishGuard does not perform network communication, this defence-in-depth measure protects against supply-chain risks introduced by third-party library updates.
+
+4.8.5 Minimal Data Collection
+
+The application does not store SMS message content in its own database. The analysis_results table contains only metadata: the message ID (a reference to the system SMS content provider), the thread ID, the threat category, the confidence score, the analysis timestamp, and the matched rule name. The actual message text is read from the Android SMS content provider at display time (in the SmsRepository) and is never duplicated into SmishGuard's storage. This minimisation approach reduces the impact of a hypothetical data breach: even if an attacker gained access to SmishGuard's database, they would obtain only classification metadata, not the message content itself.
+
+4.8.6 Logging Discipline
+
+During development, the SmishDetector logs message snippets (the first 60 characters of a message) for debugging purposes. These logs are written to Android's logcat system and are accessible only on devices with USB debugging enabled. In a production release, these logging statements would be stripped using ProGuard/R8 rules or replaced with a release-safe logging mechanism that omits message content.
+
+
+4.9 Challenges and Resolutions
+
+Several implementation challenges were encountered and resolved during development.
+
+4.9.1 Out of Memory (OOM) Crashes
+
+The initial implementation eagerly loaded the 127 MB TFLite model during Application.onCreate(), causing immediate OOM crashes on the target device (Samsung Galaxy J7, 3 GB RAM, Android 8.1). The resolution combined three strategies: (1) implementing the SmishDetector as a singleton to prevent multiple model instances, (2) deferring model loading to the first classify() call via lazy initialisation, and (3) requesting an expanded memory allocation via android:largeHeap="true" in the manifest.
+
+4.9.2 Contact-Based Score Overriding
+
+The initial implementation treated messages from known contacts as unconditionally safe, assigning them a SAFE classification without model analysis. Testing revealed that this approach created a security vulnerability: if a contact's phone number was spoofed or their device was compromised, fraudulent messages sent from their number would bypass detection entirely. The resolution replaced the absolute override with a proportional 40% score reduction, allowing genuinely suspicious content from contacts to still be flagged while reflecting the lower baseline probability of fraud.
+
+4.9.3 Notification Display Issues
+
+Android 8.0+ requires notification channels to be created before notifications can be posted, and each channel must be assigned an importance level that determines its behaviour (sound, vibration, heads-up display). Early testing revealed that notifications were silently dropped because the channels were not being created early enough in the service lifecycle. The resolution consolidated channel creation into the service's onCreate() method, ensuring that both the monitor channel and alert channel are available before any notification is posted.
+
+Additionally, emoji characters included in early notification text were not rendering correctly on the target device, resulting in empty squares. The resolution removed emoji from notification content, relying instead on clear textual descriptions.
+
+4.9.4 Batch Scan Consistency
+
+The scanUnanalyzedMessages() method initially passed the isInContacts parameter based on a real-time contact lookup for each sender. This produced inconsistent results for users who added contacts after receiving messages, as re-scans would change the classification of previously analysed messages. The resolution standardised batch scans to always pass isInContacts=false, ensuring consistent classification behaviour regardless of when contacts are added, while preserving the real-time contact adjustment for newly incoming messages processed by the SmsMonitorService.
+
+4.9.5 Threshold Tuning
+
+The initial threat threshold was set to 0.5, following the conventional binary classification boundary. Testing with Ghanaian SMS samples revealed that several messages with clearly fraudulent content (e.g., messages impersonating GhanaPost with phishing links) received model scores between 0.4 and 0.5, falling just below the threshold. Analysis indicated that these borderline scores resulted from the messages containing a mix of legitimate-appearing text interspersed with fraudulent elements. Lowering the threshold to 0.4 improved recall for these cases without significantly increasing false positives, as the rule-based subcategorisation layer provides an additional filtering step for borderline cases.
+
+
+4.10 Conclusion
+
+This chapter has documented the implementation of SmishGuard across its major subsystems: model training and export, the hybrid classification engine, background service integration, user interface construction, and privacy and security hardening. The implementation demonstrates a working system that satisfies the 14 functional requirements and 13 non-functional requirements specified in Chapter 2, using a combination of transformer-based machine learning, rule-based heuristics, and context-aware scoring within a privacy-preserving, on-device architecture. The five implementation challenges encountered (OOM crashes, contact overriding, notification issues, batch scan consistency, and threshold tuning) were resolved through systematic analysis and iterative refinement. The next chapter presents the testing methodology and results that evaluate the effectiveness and usability of this implementation.

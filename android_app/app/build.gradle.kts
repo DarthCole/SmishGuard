@@ -31,8 +31,8 @@ android {
         // The unique ID for your app on the Play Store and on the device
         applicationId = "com.smishguard.app"
 
-        // Minimum Android version: 28 = Android 9.0 Pie (your test device)
-        minSdk = 28
+        // Minimum Android version: 27 = Android 8.1 Oreo (your test device)
+        minSdk = 27
 
         // Target SDK: tells Android to apply behavior changes up to this version
         targetSdk = 34
@@ -81,6 +81,11 @@ android {
     buildFeatures {
         viewBinding = true
         buildConfig = true   // Generate BuildConfig class with version info etc.
+    }
+
+    // Don't compress TFLite model files — required for memory-mapping
+    androidResources {
+        noCompress += "tflite"
     }
 }
 

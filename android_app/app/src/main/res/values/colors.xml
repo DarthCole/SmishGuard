@@ -17,11 +17,13 @@
     <color name="primary_light">#4C8C4A</color>      <!-- Lighter green for accents -->
     <color name="accent">#FF6F00</color>             <!-- Amber accent -->
 
-    <!-- Fraud indicator colors -->
-    <color name="fraud_red">#D32F2F</color>          <!-- Bold red for fraud warnings -->
-    <color name="fraud_background">#1AD32F2F</color> <!-- 10% opacity red tint -->
-    <!-- "1A" = 10% alpha (0x1A = 26 out of 255) -->
-    <color name="safe_background">#00000000</color>  <!-- Fully transparent -->
+    <!-- Threat indicator colors -->
+    <color name="fraud_red">#D32F2F</color>          <!-- Legacy red (kept for compatibility) -->
+    <color name="spam_blue">#1565C0</color>           <!-- Blue for spam indicators -->
+    <color name="fraud_orange">#E65100</color>        <!-- Orange for fraud indicators -->
+    <color name="spam_background">#1A1565C0</color>   <!-- 10% blue tint background -->
+    <color name="fraud_background">#1AE65100</color>  <!-- 10% orange tint background -->
+    <color name="safe_background">#00000000</color>   <!-- Fully transparent -->
 
     <!-- Text colors -->
     <color name="text_primary">#212121</color>       <!-- Near-black for main text -->

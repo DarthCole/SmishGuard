@@ -6,12 +6,15 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
+import android.net.Uri
 import android.os.IBinder
+import android.provider.ContactsContract
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.smishguard.app.R
 import com.smishguard.app.data.local.SmishGuardDatabase
 import com.smishguard.app.data.local.entity.AnalysisResultEntity
+import com.smishguard.app.domain.model.ThreatCategory
 import com.smishguard.app.ml.SmishDetector
 import com.smishguard.app.ui.main.MainActivity
 import kotlinx.coroutines.CoroutineScope
@@ -84,7 +87,7 @@ class SmsMonitorService : Service() {
     override fun onCreate() {
         super.onCreate()
         Log.d(TAG, "Service created")
-        smishDetector = SmishDetector(this)
+        smishDetector = SmishDetector.getInstance(this)
         database = SmishGuardDatabase.getInstance(this)
         createNotificationChannels()
     }
@@ -132,59 +135,104 @@ class SmsMonitorService : Service() {
         messageBody: String,
         sender: String?
     ) {
-        val (isFraudulent, confidence) = smishDetector.isFraudulent(messageBody)
-        // DESTRUCTURING: unpacks the Pair into two separate variables
+        // Check if sender is in user's contacts
+        val isInContacts = if (sender != null) {
+            isNumberInContacts(sender)
+        } else false
+
+        // Run the hybrid classification pipeline
+        val (category, confidence, matchedRule) = smishDetector.classify(
+            messageBody = messageBody,
+            senderName = sender,
+            isInContacts = isInContacts
+        )
 
         // Save the analysis result to the local database
         database.analysisResultDao().insertResult(
             AnalysisResultEntity(
                 messageId = messageId,
                 threadId = threadId,
-                isFraudulent = isFraudulent,
+                threatCategory = category.name,
                 confidenceScore = confidence,
-                analyzedAt = System.currentTimeMillis()
+                analyzedAt = System.currentTimeMillis(),
+                matchedRule = matchedRule
             )
         )
 
-        if (isFraudulent) {
-            showFraudAlert(sender ?: "Unknown", confidence)
+        if (category != ThreatCategory.SAFE) {
+            showThreatAlert(sender ?: "Unknown", confidence, category)
         }
 
-        // NOTE: We do NOT log the message body — that would be a privacy violation
-        Log.d(TAG, "Message $messageId analyzed. Fraudulent: $isFraudulent, Confidence: $confidence")
+        Log.d(TAG, "Message $messageId analyzed. Category: $category, Confidence: $confidence, Rule: $matchedRule")
+    }
+
+    /**
+     * Check if a phone number exists in the user's contacts.
+     */
+    private fun isNumberInContacts(phoneNumber: String): Boolean {
+        return try {
+            val uri = Uri.withAppendedPath(
+                ContactsContract.PhoneLookup.CONTENT_FILTER_URI,
+                Uri.encode(phoneNumber)
+            )
+            contentResolver.query(
+                uri,
+                arrayOf(ContactsContract.PhoneLookup.DISPLAY_NAME),
+                null, null, null
+            )?.use { cursor ->
+                cursor.moveToFirst()
+            } ?: false
+        } catch (e: Exception) {
+            false
+        }
     }
 
     /**
      * Show a warning notification when a fraudulent SMS is detected.
      */
-    private fun showFraudAlert(sender: String, confidence: Float) {
+    private fun showThreatAlert(sender: String, confidence: Float, category: ThreatCategory) {
+        Log.d(TAG, "showThreatAlert: sender=$sender, confidence=$confidence, category=$category")
         val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-            // "apply { }" executes the block on the object and returns it
-            // "or" is the bitwise OR operator for combining intent flags
         }
         val pendingIntent = PendingIntent.getActivity(
             this, 0, intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            // FLAG_IMMUTABLE: security requirement — the PendingIntent can't be modified
         )
 
         val confidencePercent = (confidence * 100).toInt()
 
-        val notification = NotificationCompat.Builder(this, ALERT_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_warning_dot)
-            .setContentTitle("⚠️ Suspicious SMS Detected")
-            .setContentText("Message from $sender has $confidencePercent% fraud probability")
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setContentIntent(pendingIntent)
-            .setAutoCancel(true)  // Dismiss when tapped
-            .build()
+        val (title, text) = when (category) {
+            ThreatCategory.SPAM -> Pair(
+                "Spam SMS Detected",
+                "Message from $sender flagged as spam ($confidencePercent% confidence)"
+            )
+            ThreatCategory.FRAUD -> Pair(
+                "Fraud Alert!",
+                "Message from $sender is likely fraud ($confidencePercent% confidence)"
+            )
+            else -> Pair(
+                "Suspicious SMS",
+                "Message from $sender flagged ($confidencePercent% confidence)"
+            )
+        }
 
-        val notificationManager = getSystemService(NotificationManager::class.java)
-        // Generate unique notification ID from sender's hashCode so each sender
-        // gets their own notification (and it updates if a new fraud message
-        // comes from the same sender)
-        notificationManager.notify(sender.hashCode(), notification)
+        try {
+            val notification = NotificationCompat.Builder(this, ALERT_CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_shield)
+                .setContentTitle(title)
+                .setContentText(text)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setContentIntent(pendingIntent)
+                .setAutoCancel(true)
+                .build()
+
+            val notificationManager = getSystemService(NotificationManager::class.java)
+            notificationManager.notify(sender.hashCode(), notification)
+            Log.d(TAG, "Notification posted for $sender")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to show notification", e)
+        }
     }
 
     /**
@@ -248,7 +296,7 @@ class SmsMonitorService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         Log.d(TAG, "Service destroyed")
-        smishDetector.close()       // Release ML model resources
+        // Don't close SmishDetector — it's a shared singleton
         serviceScope.cancel()       // Cancel all running coroutines
     }
 }

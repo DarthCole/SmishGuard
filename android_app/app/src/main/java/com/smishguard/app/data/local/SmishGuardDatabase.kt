@@ -34,7 +34,7 @@ import com.smishguard.app.data.local.entity.AnalysisResultEntity
  */
 @Database(
     entities = [AnalysisResultEntity::class],
-    version = 1,
+    version = 5,
     exportSchema = false
 )
 abstract class SmishGuardDatabase : RoomDatabase() {

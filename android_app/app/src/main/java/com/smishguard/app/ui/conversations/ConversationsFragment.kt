@@ -5,10 +5,13 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.smishguard.app.databinding.FragmentConversationsBinding
+import com.smishguard.app.domain.model.SmsConversation
+import com.smishguard.app.domain.model.ThreatCategory
 
 /*
  * ConversationsFragment.kt — Conversations List Screen
@@ -92,15 +95,9 @@ class ConversationsFragment : Fragment() {
      */
     private fun setupRecyclerView() {
         adapter = ConversationAdapter { conversation ->
-            // This lambda is the "onItemClick" callback.
-            // When a user taps a conversation, this code runs.
-            // "conversation" is the SmsConversation that was tapped.
-            Toast.makeText(
-                requireContext(),
-                "Tapped: ${conversation.senderName ?: conversation.senderAddress}",
-                Toast.LENGTH_SHORT
-            ).show()
-            // Future: Navigate to a detail screen showing all messages
+            if (conversation.isThreat) {
+                showThreatExplanation(conversation)
+            }
         }
 
         binding.recyclerViewConversations.apply {
@@ -162,5 +159,65 @@ class ConversationsFragment : Fragment() {
     override fun onDestroyView() {
         super.onDestroyView()
         _binding = null
+    }
+
+    /**
+     * Show an AlertDialog explaining why a conversation was flagged.
+     */
+    private fun showThreatExplanation(conversation: SmsConversation) {
+        val sender = conversation.senderName ?: conversation.senderAddress
+        val percent = (conversation.threatConfidence * 100).toInt()
+
+        val title = when (conversation.threatCategory) {
+            ThreatCategory.SPAM -> "Spam Detected"
+            ThreatCategory.FRAUD -> "Fraud Alert"
+            else -> return
+        }
+
+        val reason = buildThreatReason(conversation)
+
+        AlertDialog.Builder(requireContext())
+            .setTitle(title)
+            .setMessage("$sender — $percent% confidence\n\n$reason")
+            .setPositiveButton("OK", null)
+            .show()
+    }
+
+    /**
+     * Build a human-readable explanation from the matched rule.
+     */
+    private fun buildThreatReason(conversation: SmsConversation): String {
+        val rule = conversation.threatReason ?: "model_threat_default"
+        val isUnknownSender = conversation.senderName == null
+
+        val reasons = mutableListOf<String>()
+
+        if (isUnknownSender) {
+            reasons.add("Sender is not in your contacts.")
+        }
+
+        // Map the matched rule to a user-friendly explanation
+        val ruleExplanation = when {
+            rule.contains("lottery_keywords") || rule.contains("lottery_brand") ||
+            rule.contains("lottery_shortcode") -> "Message contains lottery or sweepstakes language commonly used in scams."
+            rule.contains("win_money") -> "Message mentions winning money, a common spam tactic."
+            rule.contains("gambling_keywords") -> "Message contains gambling-related terms often seen in spam."
+            rule.contains("promo_language") -> "Message uses promotional language typical of unsolicited spam."
+            rule.contains("verify_demand") -> "Message asks you to verify personal information, a common phishing technique."
+            rule.contains("account_threat") -> "Message threatens account suspension to pressure you into acting."
+            rule.contains("fake_delivery") -> "Message impersonates a delivery service to trick you into clicking a link."
+            rule.contains("phishing_url") -> "Message contains a link to a known phishing domain."
+            rule.contains("whatsapp_scam") -> "Message redirects to WhatsApp, a common social engineering tactic."
+            rule.contains("job_scam") -> "Message advertises suspicious job offers often linked to fraud."
+            rule.contains("delivery_impersonation") -> "Message impersonates a courier service to steal personal details."
+            rule.contains("fake_fine") -> "Message claims you owe a fine or fee to create urgency."
+            rule.contains("urgency_scam") -> "Message uses urgent language to pressure you into responding."
+            rule.contains("suspicious_tld") -> "Message contains a link with a suspicious web domain."
+            rule.contains("model_threat_default") -> "Message shares a similar structure to known fraudulent SMS messages."
+            else -> "Message pattern matches known threat indicators."
+        }
+        reasons.add(ruleExplanation)
+
+        return reasons.joinToString("\n\n")
     }
 }

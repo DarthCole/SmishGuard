@@ -11,38 +11,15 @@ import com.smishguard.app.data.local.entity.AnalysisResultEntity
 import com.smishguard.app.domain.model.AnalysisResult
 import com.smishguard.app.domain.model.SmsConversation
 import com.smishguard.app.domain.model.SmsMessage
+import com.smishguard.app.domain.model.ThreatCategory
 import com.smishguard.app.domain.repository.ISmsRepository
+import com.smishguard.app.ml.SmishDetector
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/*
- * SmsRepository.kt — Data Layer Implementation
- * ===============================================
- * This class IMPLEMENTS the ISmsRepository interface. It's the only class
- * in the app that directly touches:
- *   1. Android's SMS Content Provider (to read SMS messages)
- *   2. The Room database (to store analysis results)
- *
- * CONTENT PROVIDER explained:
- *   Android stores SMS messages in a system database. Apps access it through
- *   a "Content Provider" — a standardised API identified by a URI like
- *   "content://sms/inbox". You query it using a ContentResolver, similar
- *   to making a SQL query but through Android's security layer.
- *
- * "withContext(Dispatchers.IO)" switches execution to a background thread
- * optimised for I/O operations (disk, network). This is CRITICAL because
- * reading SMS on the main thread would freeze the UI.
- *
- * "Cursor" is Android's way of iterating over query results — like a
- * database cursor that advances row by row.
- *
- * ".use { }" is a Kotlin extension that automatically CLOSES the resource
- * when the block finishes (like try-with-resources in Java).
- */
 class SmsRepository(
     private val context: Context
 ) : ISmsRepository {
-    // ": ISmsRepository" means this class IMPLEMENTS that interface
 
     private val contentResolver: ContentResolver = context.contentResolver
     private val database: SmishGuardDatabase = SmishGuardDatabase.getInstance(context)
@@ -50,12 +27,8 @@ class SmsRepository(
 
     override suspend fun getConversations(): List<SmsConversation> =
         withContext(Dispatchers.IO) {
-            val conversations = mutableListOf<SmsConversation>()
-            // "mutableListOf" creates an empty list you can add items to.
-            // A regular "listOf" would be immutable (read-only).
+            val threadMap = mutableMapOf<Long, SmsConversation>()
 
-            // Query the SMS Content Provider for conversation threads
-            // This groups messages by thread_id and gets the latest message per thread
             val uri = Telephony.Sms.CONTENT_URI
             val projection = arrayOf(
                 Telephony.Sms._ID,
@@ -66,17 +39,13 @@ class SmsRepository(
                 Telephony.Sms.TYPE
             )
 
-            // Get distinct thread IDs with their latest messages
-            val threadMap = mutableMapOf<Long, SmsConversation>()
-
             contentResolver.query(
                 uri,
                 projection,
-                null,     // selection (WHERE clause) — null means "all rows"
-                null,     // selectionArgs — parameters for the WHERE clause
-                "${Telephony.Sms.DATE} DESC"  // ORDER BY date descending
+                null,
+                null,
+                "${Telephony.Sms.DATE} DESC"
             )?.use { cursor ->
-                // "?." safe call — if query returns null, skip the block
                 val idIndex = cursor.getColumnIndexOrThrow(Telephony.Sms._ID)
                 val threadIdIndex = cursor.getColumnIndexOrThrow(Telephony.Sms.THREAD_ID)
                 val addressIndex = cursor.getColumnIndexOrThrow(Telephony.Sms.ADDRESS)
@@ -87,20 +56,23 @@ class SmsRepository(
                     val threadId = cursor.getLong(threadIdIndex)
 
                     if (threadId !in threadMap) {
-                        // "!in" means "not in" — first time seeing this thread
                         val address = cursor.getString(addressIndex) ?: "Unknown"
                         val body = cursor.getString(bodyIndex) ?: ""
                         val date = cursor.getLong(dateIndex)
 
-                        // Check if this thread has any fraudulent analysis results
+                        // Determine worst threat category for this thread
                         val analysisResults = analysisDao.getResultsForThread(threadId)
-                        val hasFraudulent = analysisResults.any { it.isFraudulent }
-                        // ".any { }" returns true if ANY element matches the condition
+                        val worstCategory = analysisResults
+                            .map { parseThreatCategory(it.threatCategory) }
+                            .maxByOrNull { it.ordinal }
+                            ?: ThreatCategory.SAFE
                         val maxConfidence = analysisResults
-                            .filter { it.isFraudulent }
-                            // ".filter { }" keeps only elements matching the condition
+                            .filter { parseThreatCategory(it.threatCategory) != ThreatCategory.SAFE }
                             .maxOfOrNull { it.confidenceScore } ?: 0f
-                        // ".maxOfOrNull { }" gets the maximum value, or null if empty
+                        val threatRule = analysisResults
+                            .filter { parseThreatCategory(it.threatCategory) != ThreatCategory.SAFE }
+                            .maxByOrNull { it.confidenceScore }
+                            ?.matchedRule
 
                         threadMap[threadId] = SmsConversation(
                             threadId = threadId,
@@ -108,9 +80,10 @@ class SmsRepository(
                             senderName = resolveContactName(address),
                             lastMessage = body,
                             lastTimestamp = date,
-                            messageCount = 0,  // Will be updated below
-                            isFlaggedFraudulent = hasFraudulent,
-                            fraudConfidence = maxConfidence
+                            messageCount = 0,
+                            threatCategory = worstCategory,
+                            threatConfidence = maxConfidence,
+                            threatReason = threatRule
                         )
                     }
                 }
@@ -120,12 +93,9 @@ class SmsRepository(
             threadMap.keys.forEach { threadId ->
                 val count = countMessagesInThread(threadId)
                 threadMap[threadId] = threadMap[threadId]!!.copy(messageCount = count)
-                // ".copy()" creates a clone of the data class with specified fields changed
-                // "!!" asserts non-null — safe here because we know the key exists
             }
 
             threadMap.values.sortedByDescending { it.lastTimestamp }
-            // ".sortedByDescending { }" returns a new list sorted by the given property
         }
 
     override suspend fun getMessagesForThread(threadId: Long): List<SmsMessage> =
@@ -144,9 +114,9 @@ class SmsRepository(
             contentResolver.query(
                 Telephony.Sms.CONTENT_URI,
                 projection,
-                "${Telephony.Sms.THREAD_ID} = ?",   // WHERE clause with placeholder
-                arrayOf(threadId.toString()),         // Value for the "?" placeholder
-                "${Telephony.Sms.DATE} ASC"           // Oldest first
+                "${Telephony.Sms.THREAD_ID} = ?",
+                arrayOf(threadId.toString()),
+                "${Telephony.Sms.DATE} ASC"
             )?.use { cursor ->
                 val idIndex = cursor.getColumnIndexOrThrow(Telephony.Sms._ID)
                 val addressIndex = cursor.getColumnIndexOrThrow(Telephony.Sms.ADDRESS)
@@ -157,6 +127,11 @@ class SmsRepository(
                 while (cursor.moveToNext()) {
                     val messageId = cursor.getLong(idIndex)
                     val analysisResult = analysisDao.getResultForMessage(messageId)
+                    val category = if (analysisResult != null) {
+                        parseThreatCategory(analysisResult.threatCategory)
+                    } else {
+                        ThreatCategory.SAFE
+                    }
 
                     messages.add(
                         SmsMessage(
@@ -165,16 +140,15 @@ class SmsRepository(
                             address = cursor.getString(addressIndex) ?: "Unknown",
                             body = cursor.getString(bodyIndex) ?: "",
                             timestamp = cursor.getLong(dateIndex),
-                            // Telephony.Sms.MESSAGE_TYPE_INBOX = 1 (incoming message)
                             isIncoming = cursor.getInt(typeIndex) == Telephony.Sms.MESSAGE_TYPE_INBOX,
-                            isFlaggedFraudulent = analysisResult?.isFraudulent ?: false,
-                            fraudConfidence = analysisResult?.confidenceScore ?: 0f
+                            threatCategory = category,
+                            threatConfidence = analysisResult?.confidenceScore ?: 0f
                         )
                     )
                 }
             }
 
-            messages  // Last expression = return value
+            messages
         }
 
     override suspend fun saveAnalysisResult(result: AnalysisResult) {
@@ -183,9 +157,10 @@ class SmsRepository(
                 AnalysisResultEntity(
                     messageId = result.messageId,
                     threadId = result.threadId,
-                    isFraudulent = result.isFraudulent,
+                    threatCategory = result.category.name,
                     confidenceScore = result.confidenceScore,
-                    analyzedAt = result.analyzedAt
+                    analyzedAt = result.analyzedAt,
+                    matchedRule = result.matchedRule
                 )
             )
         }
@@ -194,13 +169,13 @@ class SmsRepository(
     override suspend fun getAnalysisResultsForThread(threadId: Long): List<AnalysisResult> =
         withContext(Dispatchers.IO) {
             analysisDao.getResultsForThread(threadId).map { entity ->
-                // ".map { }" transforms each element in the list
                 AnalysisResult(
                     messageId = entity.messageId,
                     threadId = entity.threadId,
-                    isFraudulent = entity.isFraudulent,
+                    category = parseThreatCategory(entity.threatCategory),
                     confidenceScore = entity.confidenceScore,
-                    analyzedAt = entity.analyzedAt
+                    analyzedAt = entity.analyzedAt,
+                    matchedRule = entity.matchedRule
                 )
             }
         }
@@ -208,24 +183,29 @@ class SmsRepository(
     override suspend fun getAnalysisResultForMessage(messageId: Long): AnalysisResult? =
         withContext(Dispatchers.IO) {
             analysisDao.getResultForMessage(messageId)?.let { entity ->
-                // "?.let { }" only executes the block if the value is NOT null
                 AnalysisResult(
                     messageId = entity.messageId,
                     threadId = entity.threadId,
-                    isFraudulent = entity.isFraudulent,
+                    category = parseThreatCategory(entity.threatCategory),
                     confidenceScore = entity.confidenceScore,
-                    analyzedAt = entity.analyzedAt
+                    analyzedAt = entity.analyzedAt,
+                    matchedRule = entity.matchedRule
                 )
             }
         }
 
     /**
+     * Check if a phone number exists in the user's contacts.
+     */
+    fun isInContacts(phoneNumber: String): Boolean {
+        return resolveContactName(phoneNumber) != null
+    }
+
+    /**
      * Resolve a phone number to a contact name.
      * Returns null if the number isn't in the user's contacts.
-     *
-     * "private" means only this class can call this function.
      */
-    private fun resolveContactName(phoneNumber: String): String? {
+    fun resolveContactName(phoneNumber: String): String? {
         return try {
             val uri = Uri.withAppendedPath(
                 ContactsContract.PhoneLookup.CONTENT_FILTER_URI,
@@ -243,14 +223,10 @@ class SmsRepository(
                 }
             }
         } catch (e: Exception) {
-            // If contacts permission isn't granted, return null gracefully
             null
         }
     }
 
-    /**
-     * Count the number of messages in a specific thread.
-     */
     private fun countMessagesInThread(threadId: Long): Int {
         return contentResolver.query(
             Telephony.Sms.CONTENT_URI,
@@ -259,6 +235,80 @@ class SmsRepository(
             arrayOf(threadId.toString()),
             null
         )?.use { it.count } ?: 0
-        // "it.count" is the number of rows; "?: 0" means default to 0 if null
+    }
+
+    /**
+     * Scan all incoming SMS messages that haven't been analyzed yet.
+     * Runs SmishDetector on each unanalyzed message and stores results.
+     */
+    suspend fun scanUnanalyzedMessages(detector: SmishDetector) = withContext(Dispatchers.IO) {
+        val projection = arrayOf(
+            Telephony.Sms._ID,
+            Telephony.Sms.THREAD_ID,
+            Telephony.Sms.ADDRESS,
+            Telephony.Sms.BODY,
+            Telephony.Sms.TYPE
+        )
+
+        // Only scan incoming messages (TYPE_INBOX = 1)
+        contentResolver.query(
+            Telephony.Sms.CONTENT_URI,
+            projection,
+            "${Telephony.Sms.TYPE} = ?",
+            arrayOf(Telephony.Sms.MESSAGE_TYPE_INBOX.toString()),
+            "${Telephony.Sms.DATE} DESC"
+        )?.use { cursor ->
+            val idIndex = cursor.getColumnIndexOrThrow(Telephony.Sms._ID)
+            val threadIdIndex = cursor.getColumnIndexOrThrow(Telephony.Sms.THREAD_ID)
+            val addressIndex = cursor.getColumnIndexOrThrow(Telephony.Sms.ADDRESS)
+            val bodyIndex = cursor.getColumnIndexOrThrow(Telephony.Sms.BODY)
+
+            while (cursor.moveToNext()) {
+                val messageId = cursor.getLong(idIndex)
+
+                // Skip if already analyzed
+                if (analysisDao.getResultForMessage(messageId) != null) continue
+
+                val threadId = cursor.getLong(threadIdIndex)
+                val address = cursor.getString(addressIndex) ?: "Unknown"
+                val body = cursor.getString(bodyIndex) ?: ""
+                if (body.isBlank()) continue
+
+                val contactName = resolveContactName(address)
+                val senderName = contactName ?: address
+
+                // Pass isInContacts=false for batch scanning so contact/whitelist
+                // adjustments don't reduce scores — we want to detect dangerous
+                // content regardless of who forwarded it
+                val (category, confidence, matchedRule) = detector.classify(
+                    messageBody = body,
+                    senderName = senderName,
+                    isInContacts = false
+                )
+
+                analysisDao.insertResult(
+                    AnalysisResultEntity(
+                        messageId = messageId,
+                        threadId = threadId,
+                        threatCategory = category.name,
+                        confidenceScore = confidence,
+                        analyzedAt = System.currentTimeMillis(),
+                        matchedRule = matchedRule
+                    )
+                )
+            }
+        }
+    }
+
+    /**
+     * Safely parse threat category string from database.
+     * Falls back to SAFE on any parse error.
+     */
+    private fun parseThreatCategory(value: String): ThreatCategory {
+        return try {
+            ThreatCategory.valueOf(value)
+        } catch (e: IllegalArgumentException) {
+            ThreatCategory.SAFE
+        }
     }
 }

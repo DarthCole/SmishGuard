@@ -10,6 +10,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.smishguard.app.R
 import com.smishguard.app.databinding.ItemConversationBinding
 import com.smishguard.app.domain.model.SmsConversation
+import com.smishguard.app.domain.model.ThreatCategory
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -101,27 +102,42 @@ class ConversationAdapter(
             binding.textMessageCount.text = "${conversation.messageCount} msgs"
 
             // ═══════════════════════════════════════════════════════
-            // ★ THE RED DOT — Fraud Indicator ★
+            // ★ THREAT INDICATOR DOT — Blue=Spam, Orange=Fraud ★
             // ═══════════════════════════════════════════════════════
-            // Show or hide the red warning dot based on ML analysis.
-            // This is right-aligned and vertically centered in the item layout.
-            if (conversation.isFlaggedFraudulent) {
-                binding.indicatorFraudDot.visibility = View.VISIBLE
-                // Also tint the entire item with a subtle red background
-                binding.root.setBackgroundColor(
-                    ContextCompat.getColor(binding.root.context, R.color.fraud_background)
-                )
-                // Show confidence percentage
-                val percent = (conversation.fraudConfidence * 100).toInt()
-                binding.textFraudConfidence.visibility = View.VISIBLE
-                binding.textFraudConfidence.text = "$percent% risk"
-            } else {
-                binding.indicatorFraudDot.visibility = View.GONE
-                // "GONE" = invisible AND takes no space (vs INVISIBLE which takes space)
-                binding.root.setBackgroundColor(
-                    ContextCompat.getColor(binding.root.context, R.color.safe_background)
-                )
-                binding.textFraudConfidence.visibility = View.GONE
+            when (conversation.threatCategory) {
+                ThreatCategory.SPAM -> {
+                    binding.indicatorFraudDot.visibility = View.VISIBLE
+                    binding.indicatorFraudDot.setImageResource(R.drawable.ic_spam_dot)
+                    binding.root.setBackgroundColor(
+                        ContextCompat.getColor(binding.root.context, R.color.spam_background)
+                    )
+                    val percent = (conversation.threatConfidence * 100).toInt()
+                    binding.textFraudConfidence.visibility = View.VISIBLE
+                    binding.textFraudConfidence.text = "$percent% spam"
+                    binding.textFraudConfidence.setTextColor(
+                        ContextCompat.getColor(binding.root.context, R.color.spam_blue)
+                    )
+                }
+                ThreatCategory.FRAUD -> {
+                    binding.indicatorFraudDot.visibility = View.VISIBLE
+                    binding.indicatorFraudDot.setImageResource(R.drawable.ic_fraud_dot)
+                    binding.root.setBackgroundColor(
+                        ContextCompat.getColor(binding.root.context, R.color.fraud_background)
+                    )
+                    val percent = (conversation.threatConfidence * 100).toInt()
+                    binding.textFraudConfidence.visibility = View.VISIBLE
+                    binding.textFraudConfidence.text = "$percent% fraud"
+                    binding.textFraudConfidence.setTextColor(
+                        ContextCompat.getColor(binding.root.context, R.color.fraud_orange)
+                    )
+                }
+                ThreatCategory.SAFE -> {
+                    binding.indicatorFraudDot.visibility = View.GONE
+                    binding.root.setBackgroundColor(
+                        ContextCompat.getColor(binding.root.context, R.color.safe_background)
+                    )
+                    binding.textFraudConfidence.visibility = View.GONE
+                }
             }
 
             // Handle item click

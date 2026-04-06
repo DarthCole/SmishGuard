@@ -12,6 +12,10 @@ data class SmsMessage(
     val body: String,             // The actual message text
     val timestamp: Long,          // When the message was sent/received (Unix millis)
     val isIncoming: Boolean,      // true = received, false = sent by user
-    val isFlaggedFraudulent: Boolean = false,
-    val fraudConfidence: Float = 0f
-)
+    val threatCategory: ThreatCategory = ThreatCategory.SAFE,
+    val threatConfidence: Float = 0f
+) {
+    val isThreat: Boolean get() = threatCategory != ThreatCategory.SAFE
+    val isSpam: Boolean get() = threatCategory == ThreatCategory.SPAM
+    val isFraud: Boolean get() = threatCategory == ThreatCategory.FRAUD
+}

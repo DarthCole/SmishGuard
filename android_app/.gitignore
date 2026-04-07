@@ -22,3 +22,6 @@ Thumbs.db
 *.jks
 *.keystore
 signing.properties
+
+# ── ML model (too large for GitHub; see README for instructions) ──
+*.tflite

@@ -4,14 +4,18 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.view.Menu
+import android.view.MenuItem
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
+import com.smishguard.app.R
 import com.smishguard.app.databinding.ActivityMainBinding
 import com.smishguard.app.service.SmsMonitorService
 import com.smishguard.app.ui.conversations.ConversationsFragment
+import com.smishguard.app.ui.settings.SettingsFragment
 
 /*
  * MainActivity.kt — The Main Screen
@@ -45,6 +49,9 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var viewModel: MainViewModel
+
+    // Track which screen is showing so the menu icon can toggle
+    private var isShowingSettings = false
 
     companion object {
         // Request code for runtime permission dialog — can be any unique integer
@@ -167,8 +174,59 @@ class MainActivity : AppCompatActivity() {
                 ConversationsFragment()
             )
             .commit()
+        isShowingSettings = false
+        invalidateOptionsMenu()
         // "replace" swaps whatever is in the container with the new Fragment
         // "commit" schedules the transaction (doesn't happen immediately)
+    }
+
+    /**
+     * Load the SettingsFragment into the fragment container.
+     */
+    private fun showSettingsFragment() {
+        supportFragmentManager.beginTransaction()
+            .replace(
+                R.id.fragment_container,
+                SettingsFragment()
+            )
+            .commit()
+        isShowingSettings = true
+        invalidateOptionsMenu()
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // TOOLBAR MENU
+    // ══════════════════════════════════════════════════════════
+
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(R.menu.menu_main, menu)
+        return true
+    }
+
+    override fun onPrepareOptionsMenu(menu: Menu): Boolean {
+        val settingsItem = menu.findItem(R.id.action_settings)
+        if (isShowingSettings) {
+            settingsItem?.setIcon(R.drawable.ic_shield)
+            settingsItem?.title = "Messages"
+        } else {
+            settingsItem?.setIcon(R.drawable.ic_settings)
+            settingsItem?.title = "Settings"
+        }
+        return super.onPrepareOptionsMenu(menu)
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_settings -> {
+                if (isShowingSettings) {
+                    showConversationsFragment()
+                } else {
+                    showSettingsFragment()
+                }
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
     }
 
     // ══════════════════════════════════════════════════════════

@@ -6,6 +6,8 @@ import android.database.Cursor
 import android.net.Uri
 import android.provider.ContactsContract
 import android.provider.Telephony
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKeys
 import com.smishguard.app.data.local.SmishGuardDatabase
 import com.smishguard.app.data.local.entity.AnalysisResultEntity
 import com.smishguard.app.domain.model.AnalysisResult
@@ -25,9 +27,21 @@ class SmsRepository(
     private val database: SmishGuardDatabase = SmishGuardDatabase.getInstance(context)
     private val analysisDao = database.analysisResultDao()
 
+    private fun getHistoryClearedAt(): Long {
+        val prefs = EncryptedSharedPreferences.create(
+            "smishguard_secure_prefs",
+            MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC),
+            context,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
+        return prefs.getLong("history_cleared_at", 0L)
+    }
+
     override suspend fun getConversations(): List<SmsConversation> =
         withContext(Dispatchers.IO) {
             val threadMap = mutableMapOf<Long, SmsConversation>()
+            val clearedAt = getHistoryClearedAt()
 
             val uri = Telephony.Sms.CONTENT_URI
             val projection = arrayOf(
@@ -39,11 +53,15 @@ class SmsRepository(
                 Telephony.Sms.TYPE
             )
 
+            // After a history clear, only show messages received after the clear
+            val selection = if (clearedAt > 0L) "${Telephony.Sms.DATE} > ?" else null
+            val selectionArgs = if (clearedAt > 0L) arrayOf(clearedAt.toString()) else null
+
             contentResolver.query(
                 uri,
                 projection,
-                null,
-                null,
+                selection,
+                selectionArgs,
                 "${Telephony.Sms.DATE} DESC"
             )?.use { cursor ->
                 val idIndex = cursor.getColumnIndexOrThrow(Telephony.Sms._ID)
@@ -242,20 +260,37 @@ class SmsRepository(
      * Runs SmishDetector on each unanalyzed message and stores results.
      */
     suspend fun scanUnanalyzedMessages(detector: SmishDetector) = withContext(Dispatchers.IO) {
+        // If the user cleared analysis history, only scan messages
+        // received AFTER the clear so old results aren't recreated.
+        val clearedAt = getHistoryClearedAt()
+
         val projection = arrayOf(
             Telephony.Sms._ID,
             Telephony.Sms.THREAD_ID,
             Telephony.Sms.ADDRESS,
             Telephony.Sms.BODY,
-            Telephony.Sms.TYPE
+            Telephony.Sms.TYPE,
+            Telephony.Sms.DATE
         )
 
         // Only scan incoming messages (TYPE_INBOX = 1)
+        // If history was cleared, also filter to messages received after the clear
+        val selection = if (clearedAt > 0L) {
+            "${Telephony.Sms.TYPE} = ? AND ${Telephony.Sms.DATE} > ?"
+        } else {
+            "${Telephony.Sms.TYPE} = ?"
+        }
+        val selectionArgs = if (clearedAt > 0L) {
+            arrayOf(Telephony.Sms.MESSAGE_TYPE_INBOX.toString(), clearedAt.toString())
+        } else {
+            arrayOf(Telephony.Sms.MESSAGE_TYPE_INBOX.toString())
+        }
+
         contentResolver.query(
             Telephony.Sms.CONTENT_URI,
             projection,
-            "${Telephony.Sms.TYPE} = ?",
-            arrayOf(Telephony.Sms.MESSAGE_TYPE_INBOX.toString()),
+            selection,
+            selectionArgs,
             "${Telephony.Sms.DATE} DESC"
         )?.use { cursor ->
             val idIndex = cursor.getColumnIndexOrThrow(Telephony.Sms._ID)
